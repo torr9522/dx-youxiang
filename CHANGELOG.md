@@ -16,6 +16,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Native checksum-verified release installer with fresh/Caddy-coexist modes
 - Repository-level Codex skills and full developer/operations knowledge base
 - Guarded legacy-data migration with empty-store import, credential rotation and retained rollback material
+- Minimal-Debian bootstrap command that installs TLS download prerequisites before fetching the tagged installer
 
 ### Fixed
 
