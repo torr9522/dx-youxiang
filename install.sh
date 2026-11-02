@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.0-rc.4}
+DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.0-rc.5}
 export DX_YOUXIANG_VERSION
 test "$(id -u)" -eq 0 || { echo "run as root" >&2; exit 1; }
 test ! -e /opt/dx-youxiang || { echo "/opt/dx-youxiang already exists; use the upgrade script" >&2; exit 1; }

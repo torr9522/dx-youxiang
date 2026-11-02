@@ -43,7 +43,7 @@ find "$source_dir/stalwart-export" -type f -name 'subspace_*' -size +0c -print -
 }
 
 archive=$source_dir/config/system-config.tar.gz
-if tar -tzf "$archive" | awk '/^\// || (^|\/)\.\.($|\/)/ { bad=1 } END { exit bad ? 0 : 1 }'; then
+if ! tar -tzf "$archive" | awk -f "$app_base/current/scripts/validate-tar-paths.awk"; then
   echo "unsafe path in configuration archive" >&2
   exit 1
 fi
@@ -63,10 +63,40 @@ work=$(mktemp -d /var/tmp/dx-youxiang-migration.XXXXXX)
 rollback=/var/backups/dx-youxiang/pre-migration.$stamp
 new_store=/var/lib/stalwart.import.$stamp
 new_db=$data_dir/app.db.import.$stamp
-cleanup() { rm -rf -- "$work"; }
-trap cleanup EXIT INT TERM
+services_stopped=0
+swap_started=0
+cleanup() {
+  status=$?
+  if test "$status" -ne 0 && test "$services_stopped" -eq 1; then
+    systemctl stop dx-youxiang >/dev/null 2>&1 || true
+    systemctl stop stalwart >/dev/null 2>&1 || true
+    if test "$swap_started" -eq 1; then
+      if test -d "$rollback/stalwart-data"; then
+        test ! -e "$stalwart_data" || mv "$stalwart_data" "$rollback/failed-stalwart-data"
+        mv "$rollback/stalwart-data" "$stalwart_data"
+      fi
+      if test -f "$rollback/installed-app.db"; then
+        test ! -e "$data_dir/app.db" || mv "$data_dir/app.db" "$rollback/failed-app.db"
+        mv "$rollback/installed-app.db" "$data_dir/app.db"
+      fi
+      if test -d "$rollback/config"; then cp -a "$rollback/config/." "$config_dir/"; fi
+    fi
+    systemctl start stalwart >/dev/null 2>&1 || true
+    systemctl start dx-youxiang >/dev/null 2>&1 || true
+  fi
+  rm -rf -- "$work"
+  trap - EXIT INT TERM
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-mkdir -p "$work/protected"
+mkdir -p "$work/protected" "$work/import"
+chown root:stalwart "$work"
+chmod 0710 "$work"
+chown root:stalwart "$work/import"
+chmod 0750 "$work/import"
 tar -xzf "$archive" -C "$work/protected" \
   "$legacy_prefix/app.env" "$legacy_prefix/stalwart-admin.json"
 legacy_env=$work/protected/$legacy_prefix/app.env
@@ -105,19 +135,22 @@ cp -a "$data_dir/app.db" "$rollback/app.db"
 
 systemctl stop dx-youxiang
 systemctl stop stalwart
+services_stopped=1
 mkdir -p "$new_store"
 chown stalwart:stalwart "$new_store"
 chmod 0750 "$new_store"
-jq --arg path "$new_store/" '.path = $path' "$stalwart_config" > "$work/import-config.json"
-chown stalwart:stalwart "$work/import-config.json"
-chmod 0600 "$work/import-config.json"
-runuser -u stalwart -- /usr/local/bin/stalwart --config "$work/import-config.json" --import "$source_dir/stalwart-export"
+import_config=$work/import/config.json
+jq --arg path "$new_store/" '.path = $path' "$stalwart_config" > "$import_config"
+chown stalwart:stalwart "$import_config"
+chmod 0600 "$import_config"
+runuser -u stalwart -- /usr/local/bin/stalwart --config "$import_config" --import "$source_dir/stalwart-export"
 
 cp "$source_dir/app.db" "$new_db"
 chown dx-youxiang:dx-youxiang "$new_db"
 chmod 0600 "$new_db"
 test "$(sqlite3 "$new_db" 'PRAGMA integrity_check;')" = ok
 
+swap_started=1
 mv "$stalwart_data" "$rollback/stalwart-data"
 mv "$new_store" "$stalwart_data"
 mv "$data_dir/app.db" "$rollback/installed-app.db"
@@ -172,6 +205,7 @@ mv "$config_dir/app.env.new" "$config_dir/app.env"
 systemctl restart stalwart
 systemctl start dx-youxiang
 "$app_base/current/scripts/health-check.sh"
+services_stopped=0
 
 sqlite_mailboxes=$(sqlite3 "$data_dir/app.db" 'SELECT count(*) FROM mailboxes;')
 sqlite_domains=$(sqlite3 "$data_dir/app.db" 'SELECT count(*) FROM domains;')

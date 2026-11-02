@@ -32,3 +32,6 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Preserve Stalwart's first-run bootstrap mode by letting `x:Bootstrap/set` create `config.json`
 - Refuse to overwrite an existing Stalwart registry configuration during installation
 - Start the application schema migration before seeding the default domain on a fresh database
+- Make protected legacy migration configuration readable only through a dedicated Stalwart import directory
+- Validate archive member paths with an executable regression-tested AWK policy
+- Automatically restart or roll back installed services when legacy migration fails
