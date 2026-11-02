@@ -22,6 +22,7 @@ test -r /etc/os-release
 if test "$ID" != debian || test "$VERSION_ID" != 12; then echo "only Debian 12 is supported" >&2; exit 1; fi
 test "$(uname -m)" = x86_64 || { echo "only Debian 12 AMD64 is supported" >&2; exit 1; }
 test -f "$APP_BASE/current/package-lock.json" || { echo "release source is missing from $APP_BASE/current" >&2; exit 1; }
+test ! -e /etc/stalwart/config.json || { echo "an existing Stalwart configuration was found; refusing to overwrite it" >&2; exit 1; }
 umask 027
 
 memory_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
@@ -263,10 +264,6 @@ if ! caddy validate --config "$CADDY_CONFIG"; then
   echo "Caddy configuration validation failed; previous configuration was restored" >&2
   exit 1
 fi
-
-printf '%s\n' '{"@type":"RocksDb","path":"/var/lib/stalwart/","blobSize":4096,"bufferSize":134217728,"poolWorkers":null,"cacheSize":null}' > /etc/stalwart/config.json
-chown stalwart:stalwart /etc/stalwart/config.json
-chmod 0600 /etc/stalwart/config.json
 
 cd "$APP_BASE/current"
 npm ci

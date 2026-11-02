@@ -29,3 +29,5 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Preserve prior service state and optional Caddy units during backup
 - Rename the administrator session cookie; existing candidate sessions sign in again once
 - Rotate an existing Dx 邮箱 service identity and update imported certificate paths during migration
+- Preserve Stalwart's first-run bootstrap mode by letting `x:Bootstrap/set` create `config.json`
+- Refuse to overwrite an existing Stalwart registry configuration during installation

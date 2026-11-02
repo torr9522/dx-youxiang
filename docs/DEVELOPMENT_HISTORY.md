@@ -20,6 +20,13 @@ This record is derived from the preserved Git history. It does not invent work t
 
 - `dfb8b3f` renamed the application identity, changed the mailbox password policy to 6-256 characters without composition rules, pinned the development toolchain, removed known dependency advisories and regenerated the SBOM.
 - `7993594` added the checksum/attestation-verified native release installer, fresh/Caddy-coexist deployment, private Node runtime, firewall ordering, lifecycle scripts, log rotation and release-asset builder.
-- The following documentation commit adds project Skills and the context-free handover knowledge base.
+- `6919075` added project Skills and the context-free handover knowledge base.
+- `a8f89cf` added guarded legacy-data migration, service-credential rotation and Stalwart account reindexing.
+- `8275a8c` made the public bootstrap command work on minimal Debian installations without `curl`, `wget` or CA certificates.
+
+## Clean-install Candidate Failures
+
+- `v0.1.0-rc.1` could not start on the newly reinstalled minimal Debian image because the public bootstrap command assumed `curl` already existed. `8275a8c` fixed the bootstrap command and produced `v0.1.0-rc.2`.
+- `v0.1.0-rc.2` reached Stalwart setup but its installer wrote `/etc/stalwart/config.json` before the first service start. Stalwart 1.0.1 enters bootstrap mode only when this registry file is absent, so `x:Bootstrap/set` correctly returned `This operation is only allowed in bootstrap mode`. The next candidate removes the premature file creation, refuses to overwrite an existing registry, and adds a regression test for the documented startup order.
 
 The rename does not intentionally alter APIs, the database schema, Stalwart account IDs, mailbox credentials, or existing mail. It changes the administrator cookie name, so browsers sign in again once.
