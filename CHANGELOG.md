@@ -15,6 +15,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Systemd, Caddy, Certbot, Restic, monitoring and migration tooling
 - Native checksum-verified release installer with fresh/Caddy-coexist modes
 - Repository-level Codex skills and full developer/operations knowledge base
+- Guarded legacy-data migration with empty-store import, credential rotation and retained rollback material
 
 ### Fixed
 
@@ -26,3 +27,4 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Make coexist-mode Caddy changes validation-first with rollback
 - Preserve prior service state and optional Caddy units during backup
 - Rename the administrator session cookie; existing candidate sessions sign in again once
+- Rotate an existing Dx 邮箱 service identity and update imported certificate paths during migration

@@ -24,6 +24,18 @@ Never restore over a running instance. Restore to an empty absolute directory:
 
 Install the same Stalwart version in an isolated VM or namespace, use a new empty store path and non-public ports, import `stalwart-export`, restore `app.db`, then run Stalwart's `reindexAccounts` maintenance task. Verify account count, folder/message count, bodies, attachments, flags, permissions, IMAP state and administrator access before any live cutover.
 
+For the one-time migration from the former project identity, install the matching Dx 邮箱 release first, restore the encrypted snapshot into an isolated staging directory, and run:
+
+```sh
+MIGRATION_CONFIRM=restore-into-dx-youxiang \
+  /opt/dx-youxiang/current/scripts/migrate-legacy.sh \
+  /absolute/path/to/restored/staging-directory
+```
+
+The migration rejects an inconsistent SQLite database, an empty Stalwart export, unsafe archive paths, a mismatched domain, and incomplete protected credentials. It imports into a new empty RocksDB store, schedules Stalwart's `StoreMaintenance/reindexAccounts` task, retains the installer-created store and configuration under `/var/backups/dx-youxiang/pre-migration.<UTC>`, restores the existing application database and administrator password hash, rotates a new `dx-youxiang` service credential, and rewrites certificate/listener paths through the management API. It never sources the archived environment file. A pre-migration Restic snapshot is taken before mutation.
+
+Success from the script is not the final restore verdict. Compare immutable account IDs, all folder/message/attachment counts and digests, bodies, read flags, login switches, permissions, administrator login, SMTP recipient validation and IMAP behavior against the protected manifest. Keep the rollback directory until that comparison passes.
+
 ## Live disaster recovery
 
 1. Provision a replacement server with the same compatible Stalwart version.

@@ -72,8 +72,7 @@ if (mode === "bootstrap") {
     imapLsub: true, imapNamespace: true, imapRename: true, imapSearch: true, imapSort: true, imapSelect: true,
     imapExamine: true, imapStatus: true, imapStore: true, imapSubscribe: true, imapThread: true,
   };
-  const create = {};
-  if (!accountIds.length) create.service = {
+  const serviceDefinition = {
     "@type": "User", name: "dx-youxiang", domainId, description: "Dx 邮箱 service identity",
     credentials: { "0": { "@type": "Password", secret: servicePassword } },
     roles: { "@type": "Custom", roleIds: {} },
@@ -86,6 +85,10 @@ if (mode === "bootstrap") {
       sysActionCreate: true, actionReloadTlsCertificates: true
     }, disabledPermissions: { emailSend: true } }, quotas: {}, encryptionAtRest: { "@type": "Disabled" }
   };
+  const create = {};
+  const update = {};
+  if (accountIds.length) update[accountIds[0]] = serviceDefinition;
+  else create.service = serviceDefinition;
   const listenerUpdate = {};
   const listenerDestroy = [];
   for (const item of listeners) {
@@ -95,22 +98,31 @@ if (mode === "bootstrap") {
     else listenerDestroy.push(item.id);
   }
   const methods = [];
-  if (Object.keys(create).length) methods.push(["x:Account/set", { create }, "service"]);
-  if (!certificateIds.length) methods.push(["x:Certificate/set", { create: { cert: {
+  methods.push(["x:Account/set", Object.keys(create).length ? { create } : { update }, "service"]);
+  const certificateDefinition = {
     certificate: { "@type": "File", filePath: certPath }, privateKey: { "@type": "File", filePath: keyPath }
-  } } }, "cert"]);
+  };
+  methods.push(["x:Certificate/set", certificateIds.length
+    ? { update: { [certificateIds[0]]: certificateDefinition } }
+    : { create: { cert: certificateDefinition } }, "cert"]);
   methods.push(["x:NetworkListener/set", { update: listenerUpdate, destroy: listenerDestroy }, "listeners"]);
-  if (accountIds.length) {
-    throw new Error("Service identity already exists but its credential output is unavailable; recover or rotate it explicitly");
-  }
   const configured = await call(adminUser, adminPass, methods);
   for (const [, result] of configured) {
     if (result.notCreated && Object.keys(result.notCreated).length) throw new Error(JSON.stringify(result.notCreated));
     if (result.notUpdated && Object.keys(result.notUpdated).length) throw new Error(JSON.stringify(result.notUpdated));
     if (result.notDestroyed && Object.keys(result.notDestroyed).length) throw new Error(JSON.stringify(result.notDestroyed));
   }
-  const serviceId = configured.find(([, , id]) => id === "service")?.[1]?.created?.service?.id;
+  const serviceResult = configured.find(([, , id]) => id === "service")?.[1];
+  const serviceId = serviceResult?.created?.service?.id ?? accountIds[0];
   await store({ domainId, serviceId, serviceUsername: `dx-youxiang@${domain}`, servicePassword });
+} else if (mode === "reindex") {
+  const credentials = JSON.parse(await readFile(process.env.ADMIN_CREDENTIAL_FILE, "utf8"));
+  const result = await call(credentials.username, credentials.secret, [["x:Task/set", { create: { reindex: {
+    "@type": "StoreMaintenance", maintenanceType: "reindexAccounts"
+  } } }, "reindex"]]);
+  const task = result[0][1];
+  if (task.notCreated?.reindex) throw new Error(JSON.stringify(task.notCreated.reindex));
+  await store({ taskId: task.created?.reindex?.id });
 } else {
-  throw new Error("MODE must be bootstrap or configure");
+  throw new Error("MODE must be bootstrap, configure or reindex");
 }
