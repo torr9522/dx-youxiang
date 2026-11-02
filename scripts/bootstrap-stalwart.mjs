@@ -106,6 +106,10 @@ if (mode === "bootstrap") {
     ? { update: { [certificateIds[0]]: certificateDefinition } }
     : { create: { cert: certificateDefinition } }, "cert"]);
   methods.push(["x:NetworkListener/set", { update: listenerUpdate, destroy: listenerDestroy }, "listeners"]);
+  methods.push(["x:Authentication/set", { update: { singleton: {
+    minPasswordLength: 6,
+    minPasswordStrength: "zero",
+  } } }, "authentication"]);
   const configured = await call(adminUser, adminPass, methods);
   for (const [, result] of configured) {
     if (result.notCreated && Object.keys(result.notCreated).length) throw new Error(JSON.stringify(result.notCreated));

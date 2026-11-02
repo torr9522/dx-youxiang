@@ -37,3 +37,4 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Validate archive member paths with an executable regression-tested AWK policy
 - Automatically restart or roll back installed services and remove incomplete candidate stores when legacy migration fails
 - Wait for the migrated web process to become healthy before running the full post-migration readiness gate
+- Configure Stalwart's supported authentication policy for 6-character mailbox passwords without composition rules

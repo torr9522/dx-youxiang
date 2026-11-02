@@ -62,12 +62,13 @@ describe("Stalwart account provisioning", () => {
       return new Response(JSON.stringify({ methodResponses: [["x:Account/set", { updated: { "acc-a": null } }, "account-update"]] }), { status: 200 });
     }));
     const client = new StalwartClient(config);
-    await client.setExternalLogin("acc-a", true, "Strong-Test-Password!9");
+    await client.setExternalLogin("acc-a", true, "123456");
     await client.setExternalLogin("acc-a", false);
 
     const enabled = payloads[0].methodCalls[0][1].update["acc-a"].permissions;
     const disabled = payloads[1].methodCalls[0][1].update["acc-a"].permissions;
     expect(enabled.enabledPermissions.authenticate).toBe(true);
+    expect(payloads[0].methodCalls[0][1].update["acc-a"].credentials["0"].secret).toBe("123456");
     expect(enabled.disabledPermissions).toEqual({ emailSend: true });
     expect(disabled.enabledPermissions.authenticate).toBeUndefined();
     expect(disabled.disabledPermissions).toEqual({ authenticate: true, emailSend: true });

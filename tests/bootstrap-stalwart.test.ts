@@ -57,6 +57,7 @@ describe("Stalwart bootstrap maintenance", () => {
         ["x:Account/set", { updated: { "service-1": null } }, "service"],
         ["x:Certificate/set", { updated: { "certificate-1": null } }, "cert"],
         ["x:NetworkListener/set", { updated: { "smtp-1": null, "http-1": null } }, "listeners"],
+        ["x:Authentication/set", { updated: { singleton: null } }, "authentication"],
       ];
     });
 
@@ -70,6 +71,10 @@ describe("Stalwart bootstrap maintenance", () => {
     expect(mutation[0][1].update["service-1"].permissions.disabledPermissions.emailSend).toBe(true);
     expect(mutation[0][1].update["service-1"].credentials["0"].secret.length).toBeGreaterThan(30);
     expect(mutation[1][1].update["certificate-1"].certificate.filePath).toBe("/etc/dx-youxiang/tls/fullchain.pem");
+    expect(mutation[3]).toEqual(["x:Authentication/set", { update: { singleton: {
+      minPasswordLength: 6,
+      minPasswordStrength: "zero",
+    } } }, "authentication"]);
     expect(JSON.parse(await readFile(test.outputFile, "utf8"))).toMatchObject({
       domainId: "domain-1", serviceId: "service-1", serviceUsername: "dx-youxiang@example.test",
     });

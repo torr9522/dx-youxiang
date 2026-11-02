@@ -20,6 +20,14 @@ Fix: `072da9b` first queries the mailbox with role `inbox`, then applies that ID
 
 Mailbox switching could retain stale position/results from a prior mailbox or allow an older response to win. `08e2ed6` added coverage for reset and request isolation. `InboxPage` is also keyed by numeric mailbox ID.
 
+## Six-Character Password Rejected By Stalwart
+
+Symptom: the application accepted the documented six-character independent password, but Stalwart 1.0.1 rejected the account update with `Password must be at least 8 characters long.`
+
+Root cause: application validation and tests covered the API payload, while Stalwart's `Authentication` singleton retained its defaults of `minPasswordLength: 8` and `minPasswordStrength: three`.
+
+Fix: the installer and legacy migration configuration pass use Stalwart's supported `x:Authentication/set` API to set `minPasswordLength: 6` and `minPasswordStrength: zero`. This is a global Stalwart password-acceptance policy because v1.0.1 does not expose a per-account password policy. Emergency and service credentials remain independently generated high-entropy values. Live acceptance must prove that `123456` can authenticate over IMAPS only while the selected account has `authenticate` enabled.
+
 ## Rejected Approaches
 
 - Defaulting `NaN` to zero was rejected because it hid the incorrect identifier producer.
