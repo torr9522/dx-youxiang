@@ -13,15 +13,21 @@ describe("legacy migration safety contracts", () => {
     expect(check("safe/../secret\n")).not.toBe(0);
   });
 
-  it("separates the Stalwart import config and installs a failure rollback trap", async () => {
+  it("stages inaccessible source exports and installs complete failure cleanup", async () => {
     const migration = await readFile("scripts/migrate-legacy.sh", "utf8");
 
     expect(migration).toContain('mkdir -p "$work/protected" "$work/import"');
     expect(migration).toContain('chmod 0710 "$work"');
     expect(migration).toContain('chown root:stalwart "$work/import"');
+    expect(migration).toContain('cp -a "$source_dir/stalwart-export" "$work/import/stalwart-export"');
+    expect(migration).toContain('chown -R stalwart:stalwart "$work/import/stalwart-export"');
     expect(migration).toContain('import_config=$work/import/config.json');
+    expect(migration).toContain('--import "$work/import/stalwart-export"');
+    expect(migration).not.toContain('--import "$source_dir/stalwart-export"');
     expect(migration).toContain('if test "$status" -ne 0 && test "$services_stopped" -eq 1');
     expect(migration).toContain('mv "$rollback/stalwart-data" "$stalwart_data"');
     expect(migration).toContain('mv "$rollback/installed-app.db" "$data_dir/app.db"');
+    expect(migration).toContain('rm -rf -- "$new_store"');
+    expect(migration).toContain('rm -f -- "$new_db"');
   });
 });

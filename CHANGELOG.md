@@ -33,5 +33,6 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Refuse to overwrite an existing Stalwart registry configuration during installation
 - Start the application schema migration before seeding the default domain on a fresh database
 - Make protected legacy migration configuration readable only through a dedicated Stalwart import directory
+- Stage protected Stalwart exports in that traversable directory so root-private restore sources remain readable during import
 - Validate archive member paths with an executable regression-tested AWK policy
-- Automatically restart or roll back installed services when legacy migration fails
+- Automatically restart or roll back installed services and remove incomplete candidate stores when legacy migration fails

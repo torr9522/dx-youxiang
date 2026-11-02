@@ -84,6 +84,10 @@ cleanup() {
     systemctl start stalwart >/dev/null 2>&1 || true
     systemctl start dx-youxiang >/dev/null 2>&1 || true
   fi
+  if test "$swap_started" -eq 0; then
+    rm -rf -- "$new_store"
+    rm -f -- "$new_db"
+  fi
   rm -rf -- "$work"
   trap - EXIT INT TERM
   exit "$status"
@@ -97,6 +101,10 @@ chown root:stalwart "$work"
 chmod 0710 "$work"
 chown root:stalwart "$work/import"
 chmod 0750 "$work/import"
+cp -a "$source_dir/stalwart-export" "$work/import/stalwart-export"
+chown -R stalwart:stalwart "$work/import/stalwart-export"
+find "$work/import/stalwart-export" -type d -exec chmod 0700 {} +
+find "$work/import/stalwart-export" -type f -exec chmod 0600 {} +
 tar -xzf "$archive" -C "$work/protected" \
   "$legacy_prefix/app.env" "$legacy_prefix/stalwart-admin.json"
 legacy_env=$work/protected/$legacy_prefix/app.env
@@ -143,7 +151,7 @@ import_config=$work/import/config.json
 jq --arg path "$new_store/" '.path = $path' "$stalwart_config" > "$import_config"
 chown stalwart:stalwart "$import_config"
 chmod 0600 "$import_config"
-runuser -u stalwart -- /usr/local/bin/stalwart --config "$import_config" --import "$source_dir/stalwart-export"
+runuser -u stalwart -- /usr/local/bin/stalwart --config "$import_config" --import "$work/import/stalwart-export"
 
 cp "$source_dir/app.db" "$new_db"
 chown dx-youxiang:dx-youxiang "$new_db"
