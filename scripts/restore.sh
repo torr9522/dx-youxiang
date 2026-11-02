@@ -13,5 +13,5 @@ test ! -e "$target" || { test -d "$target" && test -z "$(find "$target" -mindept
 export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
 mkdir -p "$target"
 restic restore "$snapshot" --target "$target"
-find "$target" -type f -exec sha256sum {} + > "$target/SHA256SUMS"
+find "$target" -type f ! -name SHA256SUMS -exec sha256sum {} + > "$target/SHA256SUMS"
 echo "Restored into $target; live services were not modified."

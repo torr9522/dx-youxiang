@@ -42,5 +42,6 @@ systemctl start private-mail-hub
 
 restic snapshots >/dev/null 2>&1 || restic init
 restic backup "$staging" --tag private-mail-hub --host "$(hostname -f)"
-restic forget --tag private-mail-hub --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+restic forget --tag private-mail-hub --group-by host,tags \
+  --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
 restic check --read-data-subset=5%
