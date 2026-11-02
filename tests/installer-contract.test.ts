@@ -49,6 +49,29 @@ describe("native installer contracts", () => {
     expect(retryTimer).toContain("OnUnitActiveSec=30m");
   });
 
+  it("keeps public SMTP gated until trusted readiness and an encrypted backup exist", async () => {
+    const installer = await readFile("scripts/install.sh", "utf8");
+    const firewall = await readFile("scripts/firewall.sh", "utf8");
+    const obtain = await readFile("scripts/obtain-certificate.sh", "utf8");
+    const health = await readFile("scripts/health-check.sh", "utf8");
+
+    expect(installer.indexOf("systemctl enable --now dx-youxiang-firewall.service"))
+      .toBeLessThan(installer.indexOf("systemctl enable --now stalwart"));
+    expect(firewall).toContain("dx-youxiang SMTP readiness gate");
+    expect(firewall).toContain("check-inbound");
+    expect(obtain).toContain("/readyz");
+    expect(obtain).toContain("restic snapshots --tag dx-youxiang --json");
+    expect(obtain).toContain("smtp_inbound_state=/var/lib/dx-youxiang/smtp-inbound.enabled");
+    expect(obtain.indexOf("restic snapshots")).toBeLessThan(obtain.indexOf('install -o root -g root -m 0600 /dev/null "$smtp_inbound_state"'));
+    expect(health).toContain("smtp-inbound-ready");
+  });
+
+  it("uses a dedicated top-level Caddy include in coexist mode", async () => {
+    const installer = await readFile("scripts/install.sh", "utf8");
+    expect(installer).toContain("caddy_site=/etc/caddy/dx-youxiang.caddy");
+    expect(installer).toContain("import /etc/caddy/dx-youxiang.caddy");
+  });
+
   it("defaults the public bootstrap installer to the stable release", async () => {
     const bootstrap = await readFile("install.sh", "utf8");
     expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.0}");

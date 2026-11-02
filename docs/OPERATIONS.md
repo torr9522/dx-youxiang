@@ -21,3 +21,5 @@ Track `/var/lib/stalwart`, `/var/lib/dx-youxiang` and the off-host backup reposi
 ## Certificate renewal
 
 Certbot owns ACME. Its deploy hook atomically replaces the shared certificate and calls Stalwart's `ReloadTlsCertificates` action, which does not interrupt existing connections, then reloads Caddy. The `dx-youxiang-certificate-retry.timer` exists only while initial issuance has not succeeded and disables itself after success; it records and honors an ACME `retry after` time without contacting the CA early. `certbot.timer` owns all later renewals. Do not enable Stalwart ACME or Caddy automatic HTTPS for the same hostname.
+
+`/var/lib/dx-youxiang/smtp-inbound.enabled` is the root-only readiness marker for public SMTP. The initial certificate workflow creates it only after `/readyz` and an encrypted Restic snapshot pass, then reapplies the project firewall without the temporary inbound gate. If the marker is missing after a restore, public SMTP remains closed until the same checks are completed again.

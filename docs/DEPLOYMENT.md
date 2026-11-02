@@ -16,7 +16,7 @@ The installer never changes DNS. It refuses to add later domains through the app
 6. Confirm Certbot issued the certificate and its deploy hook updated Caddy and Stalwart.
 7. Confirm `/readyz`, SMTP STARTTLS and IMAPS certificate names.
 
-The installer does not clear or replace UFW/nftables rules. Its project-owned nftables table rejects only new outbound TCP connections to 25/465/587, so replies on established inbound SMTP sessions continue. Existing host/provider inbound policies must already permit 25/80/443/993; the installer reports but cannot change a provider firewall.
+The installer does not clear or replace UFW/nftables rules. Its project-owned nftables table always rejects new outbound TCP connections to 25/465/587, so replies on established inbound SMTP sessions continue. Before initial trusted TLS and backup readiness it also rejects new public inbound TCP 25 connections; successful certificate setup opens only that gate. Existing host/provider inbound policies must already permit 25/80/443/993; the installer reports but cannot change a provider firewall.
 
 ## Secrets and permissions
 

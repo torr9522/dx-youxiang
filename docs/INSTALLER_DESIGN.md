@@ -18,12 +18,14 @@ The installer checks root, OS/architecture, RAM, disk, NTP, public IPv4, authori
 
 Fresh mode installs pinned Caddy and creates a minimal main config importing `sites-enabled`. Coexist mode reuses active Caddy, backs up its config, adds only one import when needed, installs a project site file, validates before reload, and restores the prior config if validation fails. Existing sites must be health-checked before and after production deployment.
 
-The application selects the first free loopback port from 3000, 3001, 3100, and 3101. Stalwart JMAP uses loopback 8080. The outbound SMTP firewall is enabled before Stalwart starts.
+The application selects the first free loopback port from 3000, 3001, 3100, and 3101. Stalwart JMAP uses loopback 8080. The project firewall is enabled before Stalwart starts. It always blocks new outbound SMTP connections and also blocks new public inbound TCP 25 connections until trusted TLS, `/readyz`, and the first encrypted Restic snapshot pass. The readiness marker is root-only and the systemd firewall service reapplies the gate after reboot when it is absent.
 
 ## TLS And Recovery
 
 A short-lived self-signed bootstrap certificate lets Stalwart and Caddy load deterministic paths. It never satisfies `/readyz`. After DNS checks, Certbot HTTP-01 obtains the trusted certificate. Its deploy hook atomically updates shared files, reloads Caddy and requests Stalwart TLS reload. Caddy and Stalwart ACME are disabled to avoid competing clients.
 
 The installer enables backup, monitoring and Certbot renewal before its first production ACME attempt. A project timer retries only an initially failed issuance and disables itself after success; the distribution Certbot timer then remains the sole renewal authority. When the ACME server returns a `retry after` time, the project timer records it and performs local no-op checks until that time rather than submitting more orders. This preserves operational timers and automatic recovery when an external ACME limit interrupts installation without reporting the bootstrap certificate as trusted.
+
+Existing-Caddy mode writes only `/etc/caddy/dx-youxiang.caddy`, backs up the main Caddyfile, adds one exact import, validates the complete configuration, and reloads Caddy. A failed validation removes the project include and restores the original main file.
 
 Upgrade creates a verified release directory, takes a backup, builds, swaps the symlink, and restores the previous symlink when readiness fails. Uninstall requires an exact typed confirmation and preserves mail, application data, config, TLS and backups.

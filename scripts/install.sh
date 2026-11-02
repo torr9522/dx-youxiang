@@ -249,17 +249,19 @@ if test "$install_mode" = fresh; then
   printf '{\n  admin 127.0.0.1:2019\n  auto_https off\n}\n\nimport /etc/caddy/sites-enabled/*.caddy\n' > "$CADDY_CONFIG"
   chown root:caddy "$CADDY_CONFIG"
   chmod 0640 "$CADDY_CONFIG"
+  caddy_site=/etc/caddy/sites-enabled/dx-youxiang.caddy
 else
-  test ! -e /etc/caddy/sites-enabled/dx-youxiang.caddy || { echo "existing Dx Youxiang Caddy site found" >&2; exit 1; }
+  caddy_site=/etc/caddy/dx-youxiang.caddy
+  test ! -e "$caddy_site" || { echo "existing Dx Youxiang Caddy site found" >&2; exit 1; }
   caddy_backup="$CADDY_CONFIG.pre-dx-youxiang.$(date -u +%Y%m%dT%H%M%SZ).bak"
   cp -a "$CADDY_CONFIG" "$caddy_backup"
-  grep -Fqx 'import /etc/caddy/sites-enabled/*.caddy' "$CADDY_CONFIG" || printf '\nimport /etc/caddy/sites-enabled/*.caddy\n' >> "$CADDY_CONFIG"
+  grep -Fqx 'import /etc/caddy/dx-youxiang.caddy' "$CADDY_CONFIG" || printf '\nimport /etc/caddy/dx-youxiang.caddy\n' >> "$CADDY_CONFIG"
 fi
 sed -e "s/__MAIL_HOST__/$MAIL_HOST/g" -e "s/__APP_PORT__/$APP_PORT/g" \
   "$APP_BASE/current/deploy/caddy/Caddyfile" > "$tmp/dx-youxiang.caddy"
-install -o root -g caddy -m 0640 "$tmp/dx-youxiang.caddy" /etc/caddy/sites-enabled/dx-youxiang.caddy
+install -o root -g caddy -m 0640 "$tmp/dx-youxiang.caddy" "$caddy_site"
 if ! caddy validate --config "$CADDY_CONFIG"; then
-  rm -f /etc/caddy/sites-enabled/dx-youxiang.caddy
+  rm -f "$caddy_site"
   if test "$install_mode" = coexist; then cp -a "$caddy_backup" "$CADDY_CONFIG"; fi
   echo "Caddy configuration validation failed; previous configuration was restored" >&2
   exit 1

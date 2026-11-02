@@ -21,6 +21,7 @@ check stalwart-jmap curl -fsS --max-time 5 http://127.0.0.1:8080/.well-known/jma
 check smtp-listener sh -c "ss -lnt '( sport = :25 )' | grep -q LISTEN"
 check imaps-listener sh -c "ss -lnt '( sport = :993 )' | grep -q LISTEN"
 check firewall-policy /opt/dx-youxiang/current/scripts/firewall.sh check
+check smtp-inbound-ready /opt/dx-youxiang/current/scripts/firewall.sh check-inbound
 check backup-timer systemctl is-enabled dx-youxiang-backup.timer
 check monitor-timer systemctl is-enabled dx-youxiang-monitor.timer
 check certbot-timer systemctl is-enabled certbot.timer

@@ -17,7 +17,10 @@ rm -f /etc/systemd/system/dx-youxiang.service \
   /etc/systemd/system/dx-youxiang-certificate-retry.service \
   /etc/systemd/system/dx-youxiang-certificate-retry.timer \
   /etc/systemd/system/dx-youxiang-firewall.service
-rm -f /etc/caddy/sites-enabled/dx-youxiang.caddy
+rm -f /etc/caddy/sites-enabled/dx-youxiang.caddy /etc/caddy/dx-youxiang.caddy
+if test -f /etc/caddy/Caddyfile; then
+  sed -i '\|^import /etc/caddy/dx-youxiang.caddy$|d' /etc/caddy/Caddyfile
+fi
 if test -f /etc/caddy/Caddyfile && command -v caddy >/dev/null 2>&1; then
   if caddy validate --config /etc/caddy/Caddyfile; then systemctl reload caddy || true; fi
 fi

@@ -6,5 +6,23 @@ certbot certonly --webroot -w /var/lib/dx-youxiang/acme -d "$MAIL_HOST" --agree-
   --register-unsafely-without-email --non-interactive \
   --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/dx-youxiang
 
+app_port=$(sed -n 's/^PORT=//p' /etc/dx-youxiang/app.env | tail -1)
+curl -fsS --max-time 10 "http://127.0.0.1:${app_port}/readyz" >/dev/null
+
+# Public SMTP stays closed until both trusted TLS and the first encrypted backup exist.
+# shellcheck disable=SC1091
+. /etc/dx-youxiang/restic.env
+export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
+restic snapshots --tag dx-youxiang --json | jq -e 'length > 0' >/dev/null
+smtp_inbound_state=/var/lib/dx-youxiang/smtp-inbound.enabled
+install -o root -g root -m 0600 /dev/null "$smtp_inbound_state"
+if ! systemctl restart dx-youxiang-firewall.service \
+  || ! /opt/dx-youxiang/current/scripts/firewall.sh check-inbound; then
+  rm -f "$smtp_inbound_state"
+  systemctl restart dx-youxiang-firewall.service || true
+  echo "trusted TLS is ready, but the public SMTP readiness gate could not be opened" >&2
+  exit 1
+fi
+
 # This timer exists only to recover initial issuance. Certbot owns renewal after success.
 systemctl disable --now dx-youxiang-certificate-retry.timer >/dev/null 2>&1 || true
