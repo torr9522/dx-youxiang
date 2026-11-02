@@ -1,19 +1,45 @@
-import { useEffect, useState } from "react";
-import { Check, ChevronDown, Copy, Download, FileText, Inbox, Mail, MailOpen, Paperclip, Search, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, FileText, Inbox, Mail, MailOpen, Paperclip, Search, Trash2 } from "lucide-react";
 import { api, type Mailbox, type MessageDetail, type MessageSummary } from "../api";
+
+const PAGE_SIZE = 50;
+type MessagePage = { list: MessageSummary[]; total: number; position: number };
+
+function messagesPath(mailboxId: number, position: number, query: string, field: string, order: string) {
+  const params = new URLSearchParams({ q: query, field, order, position: String(position), limit: String(PAGE_SIZE) });
+  return `/api/mailboxes/${mailboxId}/messages?${params}`;
+}
 
 export function InboxPage({ mailboxId }: { mailboxId: number }) {
   const [mailbox, setMailbox] = useState<Mailbox | null>(null); const [messages, setMessages] = useState<MessageSummary[]>([]); const [total, setTotal] = useState(0); const [selected, setSelected] = useState<MessageDetail | null>(null);
-  const [query, setQuery] = useState(""); const [field, setField] = useState("text"); const [order, setOrder] = useState("desc"); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
-  const load = () => Promise.all([api<Mailbox>(`/api/mailboxes/${mailboxId}`), api<{ list: MessageSummary[]; total: number }>(`/api/mailboxes/${mailboxId}/messages?q=${encodeURIComponent(query)}&field=${field}&order=${order}`)]).then(([box, data]) => { setMailbox(box); setMessages(data.list); setTotal(data.total); }).catch((e) => setError(e.message));
-  useEffect(() => { void Promise.all([api<Mailbox>(`/api/mailboxes/${mailboxId}`), api<{ list: MessageSummary[]; total: number }>(`/api/mailboxes/${mailboxId}/messages`)]).then(([box, data]) => { setSelected(null); setMailbox(box); setMessages(data.list); setTotal(data.total); }).catch((e) => setError(e.message)); }, [mailboxId]);
-  const open = async (message: MessageSummary) => { try { const detail = await api<MessageDetail>(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(message.id)}`); setSelected(detail); if (!message.keywords?.["$seen"]) { await api(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(message.id)}/read`, { method: "PATCH", body: JSON.stringify({ read: true }) }); setMessages((all) => all.map((item) => item.id === message.id ? { ...item, keywords: { ...item.keywords, "$seen": true } } : item)); } } catch (e) { setError((e as Error).message); } };
+  const [query, setQuery] = useState(""); const [field, setField] = useState("text"); const [order, setOrder] = useState("desc"); const [position, setPosition] = useState(0); const [error, setError] = useState(""); const [copied, setCopied] = useState(false);
+  const listRequest = useRef(0);
+
+  const applyPage = (data: MessagePage) => { setMessages(data.list); setTotal(data.total); setPosition(data.position); setSelected(null); };
+  const load = async (nextPosition = 0) => {
+    const request = ++listRequest.current;
+    setError("");
+    try {
+      const data = await api<MessagePage>(messagesPath(mailboxId, nextPosition, query, field, order));
+      if (request === listRequest.current) applyPage(data);
+    } catch (e) { if (request === listRequest.current) setError((e as Error).message); }
+  };
+  useEffect(() => {
+    const request = ++listRequest.current;
+    void Promise.all([
+      api<Mailbox>(`/api/mailboxes/${mailboxId}`),
+      api<MessagePage>(messagesPath(mailboxId, 0, "", "text", "desc")),
+    ]).then(([box, data]) => { if (request === listRequest.current) { setMailbox(box); applyPage(data); } })
+      .catch((e) => { if (request === listRequest.current) setError((e as Error).message); });
+    return () => { listRequest.current += 1; };
+  }, [mailboxId]);
+  const open = async (message: MessageSummary) => { try { const detail = await api<MessageDetail>(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(message.id)}`); setSelected(detail); if (!message.keywords?.["$seen"]) { await api(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(message.id)}/read`, { method: "PATCH", body: JSON.stringify({ read: true }) }); const keywords = { ...detail.keywords, "$seen": true }; setSelected((current) => current?.id === message.id ? { ...current, keywords } : current); setMessages((all) => all.map((item) => item.id === message.id ? { ...item, keywords: { ...item.keywords, "$seen": true } } : item)); } } catch (e) { setError((e as Error).message); } };
   const mark = async (read: boolean) => { if (!selected) return; await api(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(selected.id)}/read`, { method: "PATCH", body: JSON.stringify({ read }) }); setSelected({ ...selected, keywords: { ...selected.keywords, "$seen": read } }); setMessages((all) => all.map((item) => item.id === selected.id ? { ...item, keywords: { ...item.keywords, "$seen": read } } : item)); };
   const remove = async () => { if (!selected || !confirm("确认永久删除这封邮件？")) return; await api(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(selected.id)}`, { method: "DELETE" }); setSelected(null); load(); };
   return <div>
     <div className="mb-5"><h1 className="break-all text-xl font-semibold text-stone-900">{mailbox?.address ?? "收件箱"}</h1><div className="mt-1 flex gap-3 text-xs text-stone-500"><span>{total} 封邮件</span><span>{mailbox?.external_login ? "IMAP 已开启" : "IMAP 已关闭"}</span></div></div>
     {error && <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-    <form className="mb-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); load(); }}><div className="relative min-w-48 flex-1"><Search className="absolute left-3 top-3 text-stone-400" size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索当前邮箱" className="focus-ring h-10 w-full rounded-md border border-stone-300 bg-white pl-9 pr-3 text-sm" /></div><select value={field} onChange={(e) => setField(e.target.value)} className="focus-ring h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"><option value="text">全部内容</option><option value="from">发件人</option><option value="subject">主题</option><option value="body">正文</option></select><select value={order} onChange={(e) => setOrder(e.target.value)} className="focus-ring h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"><option value="desc">最新优先</option><option value="asc">最早优先</option></select><button className="h-10 rounded-md bg-[#166534] px-4 text-sm text-white">搜索</button></form>
+    <form className="mb-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void load(0); }}><div className="relative min-w-48 flex-1"><Search className="absolute left-3 top-3 text-stone-400" size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索当前邮箱" className="focus-ring h-10 w-full rounded-md border border-stone-300 bg-white pl-9 pr-3 text-sm" /></div><select value={field} onChange={(e) => setField(e.target.value)} className="focus-ring h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"><option value="text">全部内容</option><option value="from">发件人</option><option value="subject">主题</option><option value="body">正文</option></select><select value={order} onChange={(e) => setOrder(e.target.value)} className="focus-ring h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"><option value="desc">最新优先</option><option value="asc">最早优先</option></select><button className="h-10 rounded-md bg-[#166534] px-4 text-sm text-white">搜索</button></form>
     <div className="grid min-h-[620px] overflow-hidden rounded-lg border border-stone-200 bg-white lg:grid-cols-[380px_minmax(0,1fr)]">
       <div className={`${selected ? "desktop-only" : ""} border-r border-stone-200`}>
         {!messages.length ? <div className="grid h-72 place-items-center text-sm text-stone-500"><div className="text-center"><Inbox className="mx-auto mb-2 text-stone-300" size={34} />暂无邮件</div></div> : messages.map((message) => <button key={message.id} onClick={() => open(message)} className={`focus-ring block min-h-24 w-full border-b border-stone-100 p-4 text-left hover:bg-stone-50 ${selected?.id === message.id ? "bg-emerald-50/70" : ""}`}><div className="flex items-center gap-2"><span className={`truncate text-sm ${message.keywords?.["$seen"] ? "font-medium text-stone-700" : "font-semibold text-stone-950"}`}>{message.from?.[0]?.name || message.from?.[0]?.email || "未知发件人"}</span><span className="ml-auto shrink-0 text-xs text-stone-400">{formatDate(message.receivedAt)}</span></div><div className={`mt-1 truncate text-sm ${message.keywords?.["$seen"] ? "text-stone-600" : "font-medium text-stone-900"}`}>{message.subject || "（无主题）"}</div><div className="mt-1 flex items-center gap-1.5"><p className="min-w-0 flex-1 truncate text-xs text-stone-400">{message.preview}</p>{message.hasAttachment && <Paperclip className="shrink-0 text-stone-400" size={14} />}</div></button>)}
@@ -29,6 +55,7 @@ export function InboxPage({ mailboxId }: { mailboxId: number }) {
         </>}
       </article>
     </div>
+    {total > PAGE_SIZE && <div className="mt-3 flex items-center justify-end gap-2 text-xs text-stone-500"><span>{position + 1}-{Math.min(position + messages.length, total)} / {total}</span><button type="button" title="上一页" aria-label="上一页" disabled={position === 0} onClick={() => void load(Math.max(0, position - PAGE_SIZE))} className="focus-ring grid h-8 w-8 place-items-center rounded-md border border-stone-300 bg-white disabled:opacity-40"><ChevronLeft size={16} /></button><button type="button" title="下一页" aria-label="下一页" disabled={position + messages.length >= total} onClick={() => void load(position + PAGE_SIZE)} className="focus-ring grid h-8 w-8 place-items-center rounded-md border border-stone-300 bg-white disabled:opacity-40"><ChevronRight size={16} /></button></div>}
   </div>;
 }
 

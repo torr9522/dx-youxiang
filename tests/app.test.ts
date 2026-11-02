@@ -12,12 +12,20 @@ const temp = mkdtempSync(join(tmpdir(), "pmh-test-"));
 let context: ReturnType<typeof createApp>;
 let csrf = "";
 let cookie = "";
+const listCalls: { accountId: string; options: Record<string, unknown> }[] = [];
 
 const fake = {
   session: async () => ({}),
   getMessage: async (accountId: string, emailId: string) => accountId === "account-a" && emailId === "email-a" ? { id: "email-a", subject: "A only", textBody: [], htmlBody: [], bodyValues: {} } : null,
-  listMessages: async (accountId: string) => ({ total: accountId === "account-a" ? 1 : 0, position: 0, list: [] }),
-  mailboxStats: async () => ({ totalEmails: 0, unreadEmails: 0 }),
+  listMessages: async (accountId: string, options: Record<string, unknown>) => {
+    listCalls.push({ accountId, options });
+    return accountId === "account-a"
+      ? { total: 3, position: Number(options.position), list: [{ id: "email-a", subject: "A only", keywords: {} }] }
+      : { total: 0, position: Number(options.position), list: [] };
+  },
+  mailboxStats: async (accountId: string) => accountId === "account-a"
+    ? { id: "inbox-a", totalEmails: 3, unreadEmails: 1 }
+    : { id: "inbox-b", totalEmails: 0, unreadEmails: 0 },
   setSeen: async () => undefined,
   deleteMessage: async () => undefined,
 } as any;
@@ -54,6 +62,35 @@ describe("API access control", () => {
     const own = await request(context.app).get("/api/mailboxes/1/messages/email-a").set("Cookie", cookie).expect(200);
     expect(own.body.subject).toBe("A only");
     await request(context.app).get("/api/mailboxes/2/messages/email-a?accountId=account-a").set("Cookie", cookie).expect(404);
+  });
+
+  it("preserves the numeric application id when Stalwart returns an inbox id", async () => {
+    const response = await request(context.app).get("/api/mailboxes?stats=1").set("Cookie", cookie).expect(200);
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 1, stalwart_account_id: "account-a", totalEmails: 3, unreadEmails: 1 }),
+      expect.objectContaining({ id: 2, stalwart_account_id: "account-b", totalEmails: 0, unreadEmails: 0 }),
+    ]));
+    expect(response.body.some((row: { id: unknown }) => typeof row.id !== "number")).toBe(false);
+  });
+
+  it("validates mailbox ids and numeric pagination parameters", async () => {
+    await request(context.app).get("/api/mailboxes/inbox-a/messages").set("Cookie", cookie).expect(400);
+    await request(context.app).get("/api/mailboxes/1/messages?position=").set("Cookie", cookie).expect(400);
+    await request(context.app).get("/api/mailboxes/1/messages?position=NaN").set("Cookie", cookie).expect(400);
+    await request(context.app).get("/api/mailboxes/1/messages?limit=0").set("Cookie", cookie).expect(400);
+    await request(context.app).get("/api/mailboxes/1/messages?limit=101").set("Cookie", cookie).expect(400);
+  });
+
+  it("passes validated search, sort and pagination within the selected account", async () => {
+    const response = await request(context.app)
+      .get("/api/mailboxes/1/messages?q=needle&field=subject&order=asc&position=50&limit=25")
+      .set("Cookie", cookie)
+      .expect(200);
+    expect(response.body).toMatchObject({ total: 3, position: 50 });
+    expect(listCalls.at(-1)).toEqual({
+      accountId: "account-a",
+      options: { query: "needle", field: "subject", ascending: true, position: 50, limit: 25 },
+    });
   });
 
   it("accepts a valid CSRF token", async () => {

@@ -15,6 +15,16 @@ import { StalwartClient, StalwartError } from "./stalwart.js";
 
 const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/, "邮箱前缀格式无效");
 const strongPassword = z.string().min(14).max(256).refine((value) => [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((rule) => rule.test(value)).length >= 3, "密码需包含至少三类字符");
+const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
+  .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
+
+function queryInteger(defaultValue: number, minimum: number, maximum: number) {
+  return z.preprocess((value) => {
+    if (value === undefined) return defaultValue;
+    if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) return Number(value);
+    return value;
+  }, z.number().int().min(minimum).max(maximum));
+}
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
@@ -113,7 +123,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.patch("/api/domains/:id/default", (req, res) => {
-    const id = parse(z.coerce.number().int().positive(), req.params.id);
+    const id = parse(routeId, req.params.id);
     db.db.exec("BEGIN IMMEDIATE");
     try {
       if (!db.db.prepare("SELECT id FROM domains WHERE id=? AND enabled=1").get(id)) throw Object.assign(new Error("域名不存在或未启用"), { status: 404 });
@@ -132,7 +142,10 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     const withStats = req.query.stats === "1";
     const result = await Promise.all(rows.map(async (row) => {
       if (!withStats) return row;
-      try { return { ...row, ...(await stalwart.mailboxStats(row.stalwart_account_id)) }; }
+      try {
+        const stats = await stalwart.mailboxStats(row.stalwart_account_id);
+        return { ...row, totalEmails: stats.totalEmails, unreadEmails: stats.unreadEmails };
+      }
       catch { return { ...row, totalEmails: null, unreadEmails: null }; }
     }));
     res.json(result);
@@ -168,7 +181,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   function mailbox(idValue: string) {
-    const id = parse(z.coerce.number().int().positive(), idValue);
+    const id = parse(routeId, idValue);
     const row = db.db.prepare(`SELECT m.*,d.name domain FROM mailboxes m JOIN domains d ON d.id=m.domain_id WHERE m.id=?`).get(id) as any;
     if (!row) throw Object.assign(new Error("邮箱不存在"), { status: 404 });
     return row;
@@ -224,8 +237,8 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     const input = parse(z.object({
       q: z.string().max(256).optional(),
       field: z.enum(["text", "from", "subject", "body"]).default("text"),
-      position: z.coerce.number().int().min(0).default(0),
-      limit: z.coerce.number().int().min(1).max(100).default(50),
+      position: queryInteger(0, 0, Number.MAX_SAFE_INTEGER),
+      limit: queryInteger(50, 1, 100),
       order: z.enum(["asc", "desc"]).default("desc"),
     }), req.query);
     res.json(await stalwart.listMessages(row.stalwart_account_id, { query: input.q, field: input.field, position: input.position, limit: input.limit, ascending: input.order === "asc" }));

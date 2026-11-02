@@ -103,7 +103,11 @@ export class StalwartClient {
       ["Mailbox/get", { accountId, "#ids": { resultOf: "mq", name: "Mailbox/query", path: "/ids" }, properties: ["id", "totalEmails", "unreadEmails"] }, "mg"],
     ]);
     const get = responses.find(([name]) => name === "Mailbox/get")?.[1];
-    return get?.list?.[0] ?? { totalEmails: 0, unreadEmails: 0 };
+    const inbox = get?.list?.[0];
+    return {
+      totalEmails: Number.isSafeInteger(inbox?.totalEmails) && inbox.totalEmails >= 0 ? inbox.totalEmails : 0,
+      unreadEmails: Number.isSafeInteger(inbox?.unreadEmails) && inbox.unreadEmails >= 0 ? inbox.unreadEmails : 0,
+    };
   }
 
   async listMessages(accountId: string, options: { query?: string; field?: string; position?: number; limit?: number; ascending?: boolean }) {

@@ -58,7 +58,7 @@ export function App() {
       <main className="mx-auto max-w-[1480px] p-4 lg:p-7">
         {view.name === "dashboard" && <DashboardPage onMailbox={(id) => navigate({ name: "inbox", mailboxId: id })} onCreate={() => navigate({ name: "mailboxes" })} />}
         {view.name === "mailboxes" && <MailboxesPage onMailbox={(id) => navigate({ name: "inbox", mailboxId: id })} />}
-        {view.name === "inbox" && <InboxPage mailboxId={view.mailboxId} />}
+        {view.name === "inbox" && <InboxPage key={view.mailboxId} mailboxId={view.mailboxId} />}
         {view.name === "settings" && <SettingsPage />}
         {view.name === "audit" && <AuditPage />}
       </main>

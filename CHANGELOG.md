@@ -13,3 +13,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Safe HTML, verification-code extraction and attachment proxy
 - SQLite WAL state, audit records, CSRF protection and login throttling
 - Systemd, Caddy, Certbot, Restic, monitoring and migration tooling
+
+### Fixed
+
+- Preserve numeric application mailbox IDs when adding Stalwart inbox statistics
+- Validate inbox pagination parameters and reset state when switching mailboxes

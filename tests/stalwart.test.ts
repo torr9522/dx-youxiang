@@ -11,6 +11,14 @@ const config = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Stalwart account provisioning", () => {
+  it("returns only validated inbox counts from mailbox statistics", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ methodResponses: [
+      ["Mailbox/query", { accountId: "acc-a", ids: ["inbox-id"] }, "mq"],
+      ["Mailbox/get", { accountId: "acc-a", list: [{ id: "inbox-id", totalEmails: 7, unreadEmails: 2 }] }, "mg"],
+    ] }), { status: 200 })));
+    await expect(new StalwartClient(config).mailboxStats("acc-a")).resolves.toEqual({ totalEmails: 7, unreadEmails: 2 });
+  });
+
   it("creates a real user with receive enabled and authentication/send disabled", async () => {
     let payload: any;
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
