@@ -156,9 +156,9 @@ chmod 0600 /var/lib/private-mail-hub/app.db*
 mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/private-mail-hub <<EOF
 #!/bin/sh
-set -a
-. /etc/private-mail-hub/app.env
-set +a
+STALWART_USERNAME=\$(sed -n 's/^STALWART_USERNAME=//p' /etc/private-mail-hub/app.env)
+STALWART_PASSWORD=\$(sed -n 's/^STALWART_PASSWORD=//p' /etc/private-mail-hub/app.env)
+export STALWART_USERNAME STALWART_PASSWORD
 exec /opt/private-mail-hub/scripts/renew-certificate.sh
 EOF
 chmod 0750 /etc/letsencrypt/renewal-hooks/deploy/private-mail-hub
