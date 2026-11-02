@@ -1,14 +1,12 @@
 [Unit]
-Description=Caddy web server for Private Mail Hub
-After=network-online.target private-mail-hub.service
+Description=Caddy web server for Dx 邮箱
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=notify
 User=caddy
 Group=caddy
-SupplementaryGroups=private-mail-hub-tls
-EnvironmentFile=/etc/caddy/private-mail-hub.env
 ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile
 ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
 Restart=on-failure
@@ -22,7 +20,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/caddy /var/log/caddy
-ReadOnlyPaths=/etc/caddy /etc/private-mail-hub/tls /var/lib/private-mail-hub/acme
+ReadOnlyPaths=/etc/caddy /etc/dx-youxiang/tls /var/lib/dx-youxiang/acme
 
 [Install]
 WantedBy=multi-user.target

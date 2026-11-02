@@ -1,19 +1,21 @@
 [Unit]
-Description=Private Mail Hub web application
+Description=Dx 邮箱 web application
 After=network-online.target stalwart.service
 Wants=network-online.target
 Requires=stalwart.service
 
 [Service]
 Type=simple
-User=private-mail-hub
-Group=private-mail-hub
-SupplementaryGroups=private-mail-hub-tls
-WorkingDirectory=/opt/private-mail-hub
-EnvironmentFile=/etc/private-mail-hub/app.env
-ExecStart=/usr/local/bin/node dist/server/index.js
+User=dx-youxiang
+Group=dx-youxiang
+SupplementaryGroups=caddy
+WorkingDirectory=/opt/dx-youxiang/current
+EnvironmentFile=/etc/dx-youxiang/app.env
+ExecStart=/opt/dx-youxiang/runtime/node/bin/node dist/server/index.js
 Restart=on-failure
 RestartSec=5s
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
 TimeoutStopSec=15s
 NoNewPrivileges=true
 PrivateTmp=true
@@ -25,8 +27,8 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-ReadWritePaths=/var/lib/private-mail-hub
-ReadOnlyPaths=/etc/private-mail-hub /var/lib/stalwart
+ReadWritePaths=/var/lib/dx-youxiang
+ReadOnlyPaths=/etc/dx-youxiang /var/lib/stalwart
 UMask=0027
 
 [Install]

@@ -9,26 +9,27 @@ The installer never changes DNS. It refuses to add later domains through the app
 ## Installation sequence
 
 1. Complete the read-only host and port precheck.
-2. Put the repository at `/opt/private-mail-hub`.
-3. Run `MAIL_DOMAIN=example.test MAIL_HOST=mail.example.test ./scripts/install.sh` as root.
+2. Select an immutable GitHub RC or stable release.
+3. Run the release's one-line installer as root and answer its three prompts.
 4. Record the one-time application administrator password in a password manager.
-5. Confirm `systemctl status stalwart private-mail-hub caddy`.
-6. After DNS resolves, run `scripts/obtain-certificate.sh` with `ACME_EMAIL` and the variables from `app.env` exported.
+5. Confirm `systemctl status stalwart dx-youxiang caddy`.
+6. Confirm Certbot issued the certificate and its deploy hook updated Caddy and Stalwart.
 7. Confirm `/readyz`, SMTP STARTTLS and IMAPS certificate names.
 
-The installer preserves existing UFW rules. It adds inbound allows only for 25/80/443/993 and outbound denies only for new TCP connections to 25/465/587. UFW's established/related rule remains ahead of user output rules, so SMTP response traffic is not blocked.
+The installer does not clear or replace UFW/nftables rules. Its project-owned nftables table rejects only new outbound TCP connections to 25/465/587, so replies on established inbound SMTP sessions continue. Existing host/provider inbound policies must already permit 25/80/443/993; the installer reports but cannot change a provider firewall.
 
 ## Secrets and permissions
 
-`/etc/private-mail-hub/app.env` is `0640 root:private-mail-hub`. Emergency Stalwart administrator material and the Restic password are `0600 root`. TLS files are `0640 root:private-mail-hub-tls`, a group containing only Stalwart, Caddy and the application health-check user.
+`/etc/dx-youxiang/app.env` is `0640 root:dx-youxiang`. Emergency Stalwart administrator material and the Restic password are root-only. TLS files are `0640 root:caddy`; only Caddy plus explicitly added Stalwart/application service users can read them.
 
 The Stalwart administration WebUI is not proxied. Its HTTP/JMAP listener is loopback-only.
 
 ## Verification
 
 ```sh
-curl -fsS http://127.0.0.1:3000/healthz
-curl -fsS http://127.0.0.1:3000/readyz | jq
+app_port=$(sed -n 's/^PORT=//p' /etc/dx-youxiang/app.env)
+curl -fsS "http://127.0.0.1:${app_port}/healthz"
+curl -fsS "http://127.0.0.1:${app_port}/readyz" | jq
 ss -lntp
 openssl s_client -connect mail.example.test:25 -starttls smtp -servername mail.example.test
 openssl s_client -connect mail.example.test:993 -servername mail.example.test

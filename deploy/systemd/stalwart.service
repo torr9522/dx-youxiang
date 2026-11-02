@@ -8,11 +8,13 @@ Wants=network-online.target
 Type=notify
 User=stalwart
 Group=stalwart
-SupplementaryGroups=private-mail-hub-tls
+SupplementaryGroups=caddy
 EnvironmentFile=-/etc/stalwart/stalwart.env
 ExecStart=/usr/local/bin/stalwart --config=/etc/stalwart/config.json
 Restart=on-failure
 RestartSec=5s
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
 LimitNOFILE=65536
 KillMode=process
 KillSignal=SIGINT
@@ -23,7 +25,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/stalwart /var/log/stalwart /etc/stalwart
-ReadOnlyPaths=/etc/private-mail-hub/tls
+ReadOnlyPaths=/etc/dx-youxiang/tls
 UMask=0027
 
 [Install]

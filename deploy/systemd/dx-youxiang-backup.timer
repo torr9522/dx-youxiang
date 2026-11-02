@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Private Mail Hub backup
+Description=Daily Dx 邮箱 backup
 
 [Timer]
 OnCalendar=*-*-* 02:20:00

@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Private Mail Hub readiness monitor
+Description=Run Dx 邮箱 readiness monitor
 
 [Timer]
 OnBootSec=5m

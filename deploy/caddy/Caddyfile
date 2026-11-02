@@ -1,26 +1,21 @@
-{
-  admin 127.0.0.1:2019
-  auto_https off
+http://__MAIL_HOST__ {
+	handle /.well-known/acme-challenge/* {
+		root * /var/lib/dx-youxiang/acme
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
 }
 
-http://{$MAIL_HOST} {
-  handle /.well-known/acme-challenge/* {
-    root * /var/lib/private-mail-hub/acme
-    file_server
-  }
-  handle {
-    redir https://{host}{uri} permanent
-  }
-}
-
-https://{$MAIL_HOST} {
-  tls /etc/private-mail-hub/tls/fullchain.pem /etc/private-mail-hub/tls/privkey.pem
-  encode zstd gzip
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "no-referrer"
-    -Server
-  }
-  reverse_proxy 127.0.0.1:3000
+https://__MAIL_HOST__ {
+	tls /etc/dx-youxiang/tls/fullchain.pem /etc/dx-youxiang/tls/privkey.pem
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:__APP_PORT__
 }

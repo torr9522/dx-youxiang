@@ -3,9 +3,9 @@
 ## Services
 
 ```sh
-systemctl status stalwart private-mail-hub caddy
-journalctl -u private-mail-hub -u stalwart -u caddy --since today
-systemctl list-timers 'private-mail-hub-*'
+systemctl status stalwart dx-youxiang caddy
+journalctl -u dx-youxiang -u stalwart -u caddy --since today
+systemctl list-timers 'dx-youxiang-*'
 ```
 
 Application logs contain operational metadata only. Do not raise logging in a way that records request bodies or mail content.
@@ -16,7 +16,7 @@ Application logs contain operational metadata only. Do not raise logging in a wa
 
 ## Capacity
 
-Track `/var/lib/stalwart`, `/var/lib/private-mail-hub` and the off-host backup repository. RocksDB reclaims deleted space asynchronously during compaction. Do not manually edit or copy live RocksDB files.
+Track `/var/lib/stalwart`, `/var/lib/dx-youxiang` and the off-host backup repository. RocksDB reclaims deleted space asynchronously during compaction. Do not manually edit or copy live RocksDB files.
 
 ## Certificate renewal
 

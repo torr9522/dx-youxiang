@@ -1,0 +1,11 @@
+/var/log/stalwart/*.log {
+  daily
+  rotate 14
+  maxsize 50M
+  missingok
+  notifempty
+  compress
+  delaycompress
+  copytruncate
+  create 0640 stalwart stalwart
+}

@@ -44,15 +44,15 @@ if (mode === "bootstrap") {
   const credentials = JSON.parse(await readFile(process.env.ADMIN_CREDENTIAL_FILE, "utf8"));
   const hostname = process.env.MAIL_HOST;
   const domain = process.env.MAIL_DOMAIN;
-  const certPath = process.env.TLS_CERT_PATH ?? "/etc/private-mail-hub/tls/fullchain.pem";
-  const keyPath = process.env.TLS_KEY_PATH ?? "/etc/private-mail-hub/tls/privkey.pem";
+  const certPath = process.env.TLS_CERT_PATH ?? "/etc/dx-youxiang/tls/fullchain.pem";
+  const keyPath = process.env.TLS_KEY_PATH ?? "/etc/dx-youxiang/tls/privkey.pem";
   if (!hostname || !domain) throw new Error("MAIL_HOST and MAIL_DOMAIN are required");
   const adminUser = credentials.username;
   const adminPass = credentials.secret;
 
   const lookup = await call(adminUser, adminPass, [
     ["x:Domain/query", { filter: { name: domain } }, "dq"],
-    ["x:Account/query", { filter: { name: "private-mail-hub" } }, "aq"],
+    ["x:Account/query", { filter: { name: "dx-youxiang" } }, "aq"],
     ["x:NetworkListener/query", {}, "lq"],
     ["x:Certificate/query", { filter: { subjectAlternativeNames: hostname } }, "cq"],
   ]);
@@ -74,7 +74,7 @@ if (mode === "bootstrap") {
   };
   const create = {};
   if (!accountIds.length) create.service = {
-    "@type": "User", name: "private-mail-hub", domainId, description: "Private Mail Hub service identity",
+    "@type": "User", name: "dx-youxiang", domainId, description: "Dx 邮箱 service identity",
     credentials: { "0": { "@type": "Password", secret: servicePassword } },
     roles: { "@type": "Custom", roleIds: {} },
     permissions: { "@type": "Replace", enabledPermissions: { ...mailboxPermissions,
@@ -110,7 +110,7 @@ if (mode === "bootstrap") {
     if (result.notDestroyed && Object.keys(result.notDestroyed).length) throw new Error(JSON.stringify(result.notDestroyed));
   }
   const serviceId = configured.find(([, , id]) => id === "service")?.[1]?.created?.service?.id;
-  await store({ domainId, serviceId, serviceUsername: `private-mail-hub@${domain}`, servicePassword });
+  await store({ domainId, serviceId, serviceUsername: `dx-youxiang@${domain}`, servicePassword });
 } else {
   throw new Error("MODE must be bootstrap or configure");
 }

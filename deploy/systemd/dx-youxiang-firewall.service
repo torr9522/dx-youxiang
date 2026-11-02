@@ -1,0 +1,13 @@
+[Unit]
+Description=Dx Youxiang receive-only SMTP egress policy
+After=network-pre.target
+Before=network.target stalwart.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/dx-youxiang/current/scripts/firewall.sh apply
+ExecStop=/opt/dx-youxiang/current/scripts/firewall.sh remove
+
+[Install]
+WantedBy=multi-user.target
