@@ -2,7 +2,7 @@
 
 ## Backup model
 
-Stalwart's official guidance forbids file-by-file copies of a running RocksDB directory. `scripts/backup.sh` stops the web service and Stalwart, performs Stalwart's offline export (including blobs), creates a consistent SQLite backup, captures configuration, restarts services, and sends the staging tree to an encrypted Restic repository.
+Stalwart's official guidance forbids file-by-file copies of a running RocksDB directory. `scripts/backup.sh` stops the web service and Stalwart, performs Stalwart's offline export (including blobs), creates a consistent SQLite backup, captures configuration and a Git source bundle, restarts services, and sends the staging tree to an encrypted Restic repository. The backup refuses to run with uncommitted source changes so the bundle and deployed source cannot silently diverge.
 
 The default local Restic repository proves the workflow but is not a separate failure domain. Before important use, change `RESTIC_REPOSITORY` in `/etc/private-mail-hub/restic.env` to an off-host SFTP/S3/B2 repository and retain the password separately.
 

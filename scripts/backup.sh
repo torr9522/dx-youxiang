@@ -37,6 +37,10 @@ tar -C / -czf "$staging/config/system-config.tar.gz" \
   etc/systemd/system/private-mail-hub-backup.timer \
   etc/systemd/system/private-mail-hub-monitor.service \
   etc/systemd/system/private-mail-hub-monitor.timer 2>/dev/null
+if test -d /opt/private-mail-hub/.git; then
+  test -z "$(git -C /opt/private-mail-hub status --porcelain)"
+  git -C /opt/private-mail-hub bundle create "$staging/config/source.bundle" --all
+fi
 systemctl start stalwart
 systemctl start private-mail-hub
 
