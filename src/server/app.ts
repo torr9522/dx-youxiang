@@ -18,6 +18,15 @@ const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
 
+type CertificateStatusSource = Pick<X509Certificate, "validTo" | "issuer" | "subject" | "checkHost">;
+
+export function assessTlsCertificate(cert: CertificateStatusSource, mailHost: string, now = Date.now()) {
+  const days = Math.floor((Date.parse(cert.validTo) - now) / 86_400_000);
+  if (cert.subject === cert.issuer) return { ok: false, detail: "bootstrap self-signed certificate" };
+  if (!cert.checkHost(mailHost)) return { ok: false, detail: "certificate hostname mismatch" };
+  return { ok: days > 7, detail: `${days} days remaining` };
+}
+
 function queryInteger(defaultValue: number, minimum: number, maximum: number) {
   return z.preprocess((value) => {
     if (value === undefined) return defaultValue;
@@ -72,8 +81,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     } catch { checks.mailStorage = { ok: false, detail: "mail storage unavailable" }; }
     try {
       const cert = new X509Certificate(await fs.readFile(config.TLS_CERT_PATH));
-      const days = Math.floor((Date.parse(cert.validTo) - Date.now()) / 86_400_000);
-      checks.tls = { ok: days > 7, detail: `${days} days remaining` };
+      checks.tls = assessTlsCertificate(cert, config.MAIL_HOST);
     } catch { checks.tls = { ok: false, detail: "certificate unavailable" }; }
     const ok = Object.values(checks).every((check) => check.ok);
     res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "degraded", checks });

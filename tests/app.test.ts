@@ -4,7 +4,7 @@ import argon2 from "argon2";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server/app.js";
+import { assessTlsCertificate, createApp } from "../src/server/app.js";
 import { AppDatabase } from "../src/server/db.js";
 import type { Config } from "../src/server/config.js";
 
@@ -15,6 +15,25 @@ let cookie = "";
 const listCalls: { accountId: string; options: Record<string, unknown> }[] = [];
 const externalLoginCalls: { accountId: string; enabled: boolean; password?: string }[] = [];
 const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[] = [];
+
+describe("TLS readiness", () => {
+  const future = new Date(Date.now() + 30 * 86_400_000).toUTCString();
+
+  it("rejects the self-signed bootstrap certificate", () => {
+    expect(assessTlsCertificate({ validTo: future, subject: "CN=mail.example.test", issuer: "CN=mail.example.test", checkHost: () => "mail.example.test" }, "mail.example.test"))
+      .toEqual({ ok: false, detail: "bootstrap self-signed certificate" });
+  });
+
+  it("rejects a certificate for another hostname", () => {
+    expect(assessTlsCertificate({ validTo: future, subject: "CN=other.example.test", issuer: "CN=Example CA", checkHost: () => undefined }, "mail.example.test"))
+      .toEqual({ ok: false, detail: "certificate hostname mismatch" });
+  });
+
+  it("accepts a non-self-issued certificate with the expected hostname and lifetime", () => {
+    const result = assessTlsCertificate({ validTo: future, subject: "CN=mail.example.test", issuer: "CN=Example CA", checkHost: () => "mail.example.test" }, "mail.example.test");
+    expect(result.ok).toBe(true);
+  });
+});
 
 const fake = {
   session: async () => ({}),

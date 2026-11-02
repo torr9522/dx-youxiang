@@ -12,7 +12,7 @@ Application logs contain operational metadata only. Do not raise logging in a wa
 
 ## Health
 
-`/healthz` reports only web-process liveness. `/readyz` separately checks SQLite, Stalwart, JMAP, mail-store free space and TLS lifetime. The monitor timer fails when readiness fails or mail storage reaches 85% usage.
+`/healthz` reports only web-process liveness. `/readyz` separately checks SQLite, Stalwart, JMAP, mail-store free space, TLS hostname/lifetime, and rejects the self-signed bootstrap certificate. The monitor timer fails when readiness fails or mail storage reaches 85% usage.
 
 ## Capacity
 
@@ -20,4 +20,4 @@ Track `/var/lib/stalwart`, `/var/lib/dx-youxiang` and the off-host backup reposi
 
 ## Certificate renewal
 
-Certbot owns ACME. Its deploy hook atomically replaces the shared certificate and calls Stalwart's `ReloadTlsCertificates` action, which does not interrupt existing connections, then reloads Caddy. Do not enable Stalwart ACME or Caddy automatic HTTPS for the same hostname.
+Certbot owns ACME. Its deploy hook atomically replaces the shared certificate and calls Stalwart's `ReloadTlsCertificates` action, which does not interrupt existing connections, then reloads Caddy. The `dx-youxiang-certificate-retry.timer` exists only while initial issuance has not succeeded and disables itself after success; `certbot.timer` owns all later renewals. Do not enable Stalwart ACME or Caddy automatic HTTPS for the same hostname.

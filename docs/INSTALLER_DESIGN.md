@@ -22,6 +22,8 @@ The application selects the first free loopback port from 3000, 3001, 3100, and 
 
 ## TLS And Recovery
 
-A short-lived self-signed bootstrap certificate lets Stalwart and Caddy load deterministic paths. After DNS checks, Certbot HTTP-01 obtains the trusted certificate. Its deploy hook atomically updates shared files, reloads Caddy and requests Stalwart TLS reload. Caddy and Stalwart ACME are disabled to avoid competing clients.
+A short-lived self-signed bootstrap certificate lets Stalwart and Caddy load deterministic paths. It never satisfies `/readyz`. After DNS checks, Certbot HTTP-01 obtains the trusted certificate. Its deploy hook atomically updates shared files, reloads Caddy and requests Stalwart TLS reload. Caddy and Stalwart ACME are disabled to avoid competing clients.
+
+The installer enables backup, monitoring and Certbot renewal before its first production ACME attempt. A project timer retries only an initially failed issuance and disables itself after success; the distribution Certbot timer then remains the sole renewal authority. This preserves operational timers and automatic recovery when an external ACME limit interrupts installation without reporting the bootstrap certificate as trusted.
 
 Upgrade creates a verified release directory, takes a backup, builds, swaps the symlink, and restores the previous symlink when readiness fails. Uninstall requires an exact typed confirmation and preserves mail, application data, config, TLS and backups.

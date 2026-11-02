@@ -38,3 +38,6 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Automatically restart or roll back installed services and remove incomplete candidate stores when legacy migration fails
 - Wait for the migrated web process to become healthy before running the full post-migration readiness gate
 - Configure Stalwart's supported authentication policy for 6-character mailbox passwords without composition rules
+- Enable backup, monitoring and Certbot renewal before the first ACME request
+- Retry only failed initial certificate issuance and hand successful certificates to Certbot renewal
+- Reject self-signed bootstrap and hostname-mismatched certificates from `/readyz`

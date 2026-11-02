@@ -240,7 +240,7 @@ chown root:caddy "$CONFIG_DIR/tls/"*.pem
 chmod 0640 "$CONFIG_DIR/tls/"*.pem
 
 install -o root -g root -m 0644 "$APP_BASE/current/deploy/systemd/stalwart.service" /etc/systemd/system/stalwart.service
-for unit in dx-youxiang.service dx-youxiang-backup.service dx-youxiang-backup.timer dx-youxiang-monitor.service dx-youxiang-monitor.timer dx-youxiang-firewall.service; do
+for unit in dx-youxiang.service dx-youxiang-backup.service dx-youxiang-backup.timer dx-youxiang-monitor.service dx-youxiang-monitor.timer dx-youxiang-firewall.service dx-youxiang-certificate-retry.service dx-youxiang-certificate-retry.timer; do
   install -o root -g root -m 0644 "$APP_BASE/current/deploy/systemd/$unit" "/etc/systemd/system/$unit"
 done
 install -o root -g root -m 0644 "$APP_BASE/current/deploy/logrotate/dx-youxiang" /etc/logrotate.d/dx-youxiang
@@ -340,11 +340,11 @@ fi
 
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 install -o root -g root -m 0750 "$APP_BASE/current/deploy/certbot/deploy-hook.sh" /etc/letsencrypt/renewal-hooks/deploy/dx-youxiang
-certbot certonly --webroot -w "$DATA_DIR/acme" -d "$MAIL_HOST" --agree-tos --no-eff-email \
-  --register-unsafely-without-email --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/dx-youxiang
-
-systemctl enable --now dx-youxiang-backup.timer dx-youxiang-monitor.timer
+printf 'MAIL_HOST=%s\n' "$MAIL_HOST" > "$CONFIG_DIR/certificate.env"
+chmod 0600 "$CONFIG_DIR/certificate.env"
+systemctl enable --now certbot.timer dx-youxiang-backup.timer dx-youxiang-monitor.timer dx-youxiang-certificate-retry.timer
 systemctl start dx-youxiang-backup.service
+systemctl start dx-youxiang-certificate-retry.service
 "$APP_BASE/current/scripts/health-check.sh"
 
 printf '\nPROJECT=dx-youxiang\nVERSION=%s\nMODE=%s\nWEB_URL=https://%s\nADMIN_USERNAME=admin\n' "${DX_YOUXIANG_VERSION:-0.1.0}" "$install_mode" "$MAIL_HOST"

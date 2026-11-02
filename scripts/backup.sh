@@ -43,6 +43,8 @@ for path in \
   etc/systemd/system/dx-youxiang-backup.timer \
   etc/systemd/system/dx-youxiang-monitor.service \
   etc/systemd/system/dx-youxiang-monitor.timer \
+  etc/systemd/system/dx-youxiang-certificate-retry.service \
+  etc/systemd/system/dx-youxiang-certificate-retry.timer \
   etc/systemd/system/dx-youxiang-firewall.service
 do
   test ! -e "/$path" || set -- "$@" "$path"

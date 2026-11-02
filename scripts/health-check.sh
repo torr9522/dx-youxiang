@@ -22,4 +22,6 @@ check smtp-listener sh -c "ss -lnt '( sport = :25 )' | grep -q LISTEN"
 check imaps-listener sh -c "ss -lnt '( sport = :993 )' | grep -q LISTEN"
 check firewall-policy /opt/dx-youxiang/current/scripts/firewall.sh check
 check backup-timer systemctl is-enabled dx-youxiang-backup.timer
+check monitor-timer systemctl is-enabled dx-youxiang-monitor.timer
+check certbot-timer systemctl is-enabled certbot.timer
 exit "$failed"

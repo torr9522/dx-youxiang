@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry initial Dx Youxiang certificate issuance
+After=network-online.target caddy.service dx-youxiang.service
+Wants=network-online.target
+Requires=caddy.service dx-youxiang.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/dx-youxiang/certificate.env
+ExecStart=/opt/dx-youxiang/current/scripts/obtain-certificate.sh
+Nice=10
+
