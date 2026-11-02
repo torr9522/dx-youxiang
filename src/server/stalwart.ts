@@ -111,7 +111,13 @@ export class StalwartClient {
   }
 
   async listMessages(accountId: string, options: { query?: string; field?: string; position?: number; limit?: number; ascending?: boolean }) {
-    const filter: Record<string, unknown> = {};
+    const mailboxResponses = await this.call([
+      ["Mailbox/query", { accountId, filter: { role: "inbox" }, limit: 1 }, "inbox-query"],
+    ]);
+    const inboxId = mailboxResponses.find(([name]) => name === "Mailbox/query")?.[1]?.ids?.[0];
+    if (!inboxId) return { total: 0, position: 0, list: [] };
+
+    const filter: Record<string, unknown> = { inMailbox: inboxId };
     if (options.query) filter[options.field === "from" ? "from" : options.field === "subject" ? "subject" : options.field === "body" ? "body" : "text"] = options.query;
     const responses = await this.call([
       ["Email/query", { accountId, filter, sort: [{ property: "receivedAt", isAscending: !!options.ascending }], position: options.position ?? 0, limit: options.limit ?? 50, calculateTotal: true }, "eq"],

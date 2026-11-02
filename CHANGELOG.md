@@ -17,4 +17,5 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 ### Fixed
 
 - Preserve numeric application mailbox IDs when adding Stalwart inbox statistics
+- Scope list/search/pagination to the selected account's Inbox folder
 - Validate inbox pagination parameters and reset state when switching mailboxes

@@ -19,6 +19,26 @@ describe("Stalwart account provisioning", () => {
     await expect(new StalwartClient(config).mailboxStats("acc-a")).resolves.toEqual({ totalEmails: 7, unreadEmails: 2 });
   });
 
+  it("scopes message queries to the selected account inbox", async () => {
+    const payloads: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      payloads.push(payload);
+      const tag = payload.methodCalls[0][2];
+      return tag === "inbox-query"
+        ? new Response(JSON.stringify({ methodResponses: [["Mailbox/query", { accountId: "acc-a", ids: ["inbox-a"] }, tag]] }), { status: 200 })
+        : new Response(JSON.stringify({ methodResponses: [
+          ["Email/query", { accountId: "acc-a", ids: ["mail-a"], total: 1, position: 0 }, "eq"],
+          ["Email/get", { accountId: "acc-a", list: [{ id: "mail-a" }] }, "eg"],
+        ] }), { status: 200 });
+    }));
+
+    await expect(new StalwartClient(config).listMessages("acc-a", { query: "needle", field: "subject", position: 0, limit: 25 })).resolves.toMatchObject({ total: 1 });
+    expect(payloads[0].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { role: "inbox" } });
+    expect(payloads[1].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { inMailbox: "inbox-a", subject: "needle" }, position: 0, limit: 25 });
+    expect(payloads[1].methodCalls[1][1].accountId).toBe("acc-a");
+  });
+
   it("creates a real user with receive enabled and authentication/send disabled", async () => {
     let payload: any;
     vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
