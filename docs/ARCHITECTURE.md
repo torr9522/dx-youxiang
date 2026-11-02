@@ -5,11 +5,13 @@
 ```text
 Internet SMTP -> Stalwart :25 -> RocksDB (account-isolated mail)
 IMAPS client  -> Stalwart :993
-Browser       -> Caddy :443 -> Private Mail Hub :3000 -> JMAP :8080 -> Stalwart
+Browser       -> Caddy :443 -> Dx 邮箱 :loopback-selected -> JMAP :8080 -> Stalwart
                                       |-> SQLite WAL
 ```
 
-Stalwart owns protocol handling, accounts, mailboxes, messages and attachments. Private Mail Hub owns the administrator session, mailbox notes, domain selection, audit records, and the mapping from its numeric mailbox ID to the immutable Stalwart account ID.
+Stalwart owns protocol handling, accounts, mailboxes, messages and attachments. Dx 邮箱 owns the administrator session, mailbox notes, domain selection, audit records, and the mapping from its numeric mailbox ID to the immutable Stalwart account ID.
+
+The installer selects the first free loopback application port from 3000, 3001, 3100, and 3101. Stalwart JMAP stays on `127.0.0.1:8080`. Caddy is the only public HTTP service.
 
 ## Authorization
 
@@ -26,3 +28,28 @@ Stalwart 1.0.1 applies permission changes to new authentication immediately. The
 ## Storage
 
 Stalwart uses its recommended single-node RocksDB store with the default blob and search stores. The application uses a separate SQLite database in WAL mode. Source, configuration, runtime data, mail data, TLS material and encrypted backups use separate directories.
+
+## Module Map
+
+- `src/client`: administrator-only React interface and request state.
+- `src/server/app.ts`: HTTP routes, validation, authorization binding, health/readiness.
+- `src/server/db.ts`: SQLite schema and migrations.
+- `src/server/stalwart.ts`: JMAP and Stalwart management adapter.
+- `src/server/security.ts`: administrator session, CSRF, cookies, audit records.
+- `src/server/mail.ts`: body presentation, HTML sanitization, verification-code extraction.
+- `scripts/bootstrap-stalwart.mjs`: one-time service identity, listeners, TLS and permission configuration.
+- `scripts/*.sh` and `deploy`: native lifecycle, systemd, Caddy, Certbot, nftables and backup assets.
+
+## Receive Flow
+
+```text
+Internet MTA
+  -> SMTP 25 STARTTLS
+  -> Stalwart validates local domain and real recipient
+  -> account-specific Inbox and blob store
+  -> service identity impersonates selected account through loopback JMAP
+  -> backend sanitizes/presents mail
+  -> authenticated administrator browser
+```
+
+No step contains a submission or relay route. New outbound TCP 25/465/587 connections are rejected at the host firewall.
