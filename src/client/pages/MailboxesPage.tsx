@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Eye, KeyRound, MailPlus, MoreHorizontal, Power, Search, Trash2 } from "lucide-react";
 import { api, type Domain, type Mailbox } from "../api";
 import { Modal } from "../components/Modal";
+import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
 
 type Dialog = "create" | "login" | "password" | "delete" | null;
 
@@ -16,11 +17,20 @@ export function MailboxesPage({ onMailbox }: { onMailbox: (id: number) => void }
     <div className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-semibold text-stone-900">邮箱管理</h1><p className="mt-1 text-sm text-stone-500">{rows.length} 个独立账户</p></div><button onClick={() => open("create")} className="focus-ring flex h-10 items-center gap-2 rounded-md bg-[#166534] px-4 text-sm font-medium text-white"><MailPlus size={17} />创建邮箱</button></div>
     <form className="mb-4 flex max-w-md gap-2" onSubmit={(e) => { e.preventDefault(); load(); }}><div className="relative flex-1"><Search className="absolute left-3 top-3 text-stone-400" size={17} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索地址或备注" className="focus-ring h-10 w-full rounded-md border border-stone-300 bg-white pl-9 pr-3 text-sm outline-none" /></div><button className="focus-ring rounded-md border border-stone-300 bg-white px-4 text-sm hover:bg-stone-50">搜索</button></form>
     {error && <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-    <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white"><table className="w-full min-w-[920px] border-collapse text-sm"><thead><tr className="h-11 border-b border-stone-200 bg-stone-50 text-left text-xs font-medium text-stone-500"><th className="px-4">邮箱地址</th><th className="px-4">未读 / 总数</th><th className="px-4">外部登录</th><th className="px-4">备注</th><th className="px-4">创建时间</th><th className="w-52 px-4 text-right">操作</th></tr></thead><tbody>
+    <div className="hidden overflow-x-auto rounded-lg border border-stone-200 bg-white md:block"><table className="w-full min-w-[920px] border-collapse text-sm"><thead><tr className="h-11 border-b border-stone-200 bg-stone-50 text-left text-xs font-medium text-stone-500"><th className="px-4">邮箱地址</th><th className="px-4">未读 / 总数</th><th className="px-4">外部登录</th><th className="px-4">备注</th><th className="px-4">创建时间</th><th className="w-52 px-4 text-right">操作</th></tr></thead><tbody>
       {rows.map((row) => <tr key={row.id} className="h-16 border-b border-stone-100 last:border-0 hover:bg-stone-50/70"><td className="px-4"><button onClick={() => onMailbox(row.id)} className="font-medium text-[#166534] hover:underline">{row.address}</button><div className="mt-0.5 text-xs text-stone-400">{row.status === "active" ? "正常接收" : row.status}</div></td><td className="px-4 text-stone-600"><span className="font-medium text-stone-900">{row.unreadEmails ?? "-"}</span> / {row.totalEmails ?? "-"}</td><td className="px-4"><span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs ${row.external_login ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-500"}`}><span className={`h-1.5 w-1.5 rounded-full ${row.external_login ? "bg-emerald-500" : "bg-stone-400"}`} />{row.external_login ? "已开启" : "已关闭"}</span></td><td className="max-w-52 truncate px-4 text-stone-500">{row.note || "-"}</td><td className="px-4 text-stone-500">{new Date(row.created_at + "Z").toLocaleDateString("zh-CN")}</td><td className="px-4"><div className="flex justify-end gap-1"><IconButton label="查看收件箱" onClick={() => onMailbox(row.id)}><Eye size={17} /></IconButton><IconButton label={row.external_login ? "关闭外部登录" : "开启外部登录"} onClick={() => open("login", row)}><Power size={17} /></IconButton><IconButton label="重置密码" onClick={() => open("password", row)}><KeyRound size={17} /></IconButton><IconButton label="删除邮箱" danger onClick={() => open("delete", row)}><Trash2 size={17} /></IconButton></div></td></tr>)}
       {!rows.length && <tr><td colSpan={6} className="p-12 text-center text-stone-500"><MoreHorizontal className="mx-auto mb-2" />暂无邮箱</td></tr>}
     </tbody></table></div>
-    {dialog === "create" && <CreateDialog domains={domains} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
+    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white md:hidden">
+      {rows.map((row) => <div key={row.id} className="border-b border-stone-100 p-4 last:border-0">
+        <button onClick={() => onMailbox(row.id)} className="break-all text-left text-sm font-semibold text-emerald-800">{row.address}</button>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><span>{row.unreadEmails ?? "-"} 未读 / {row.totalEmails ?? "-"} 封</span><span className={`rounded-full px-2 py-1 ${row.external_login ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-500"}`}>{row.external_login ? "IMAP 已开启" : "IMAP 已关闭"}</span></div>
+        {row.note && <p className="mt-2 text-xs text-stone-500">{row.note}</p>}
+        <div className="mt-3 flex items-center justify-end gap-1 border-t border-stone-100 pt-2"><IconButton label="查看收件箱" onClick={() => onMailbox(row.id)}><Eye size={17} /></IconButton><IconButton label={row.external_login ? "关闭外部登录" : "开启外部登录"} onClick={() => open("login", row)}><Power size={17} /></IconButton><IconButton label="重置密码" onClick={() => open("password", row)}><KeyRound size={17} /></IconButton><IconButton label="删除邮箱" danger onClick={() => open("delete", row)}><Trash2 size={17} /></IconButton></div>
+      </div>)}
+      {!rows.length && <div className="p-12 text-center text-sm text-stone-500"><MoreHorizontal className="mx-auto mb-2" />暂无邮箱</div>}
+    </div>
+    {dialog === "create" && <CreateMailboxDialog domains={domains} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
     {dialog === "login" && selected && <LoginDialog mailbox={selected} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
     {dialog === "password" && selected && <PasswordDialog mailbox={selected} onClose={() => setDialog(null)} />}
     {dialog === "delete" && selected && <DeleteDialog mailbox={selected} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
@@ -28,15 +38,6 @@ export function MailboxesPage({ onMailbox }: { onMailbox: (id: number) => void }
 }
 
 function IconButton({ label, onClick, danger, children }: { label: string; onClick: () => void; danger?: boolean; children: React.ReactNode }) { return <button title={label} aria-label={label} onClick={onClick} className={`focus-ring grid h-9 w-9 place-items-center rounded-md ${danger ? "text-red-600 hover:bg-red-50" : "text-stone-500 hover:bg-stone-100 hover:text-stone-800"}`}>{children}</button>; }
-
-function CreateDialog({ domains, onClose, onDone }: { domains: Domain[]; onClose: () => void; onDone: () => void }) {
-  const defaultDomain = domains.find((d) => d.is_default) ?? domains[0]; const [localPart, setLocal] = useState(""); const [domainId, setDomain] = useState(defaultDomain?.id ?? 0); const [note, setNote] = useState(""); const [error, setError] = useState("");
-  return <Modal title="创建独立邮箱" onClose={onClose}><form onSubmit={async (e) => { e.preventDefault(); setError(""); try { await api("/api/mailboxes", { method: "POST", body: JSON.stringify({ localPart, domainId, note }) }); onDone(); } catch (err) { setError((err as Error).message); } }}>
-    <label className="block text-sm text-stone-700">邮箱地址<div className="mt-1.5 flex"><input autoFocus value={localPart} onChange={(e) => setLocal(e.target.value)} placeholder="例如 155" className="focus-ring h-11 min-w-0 flex-1 rounded-l-md border border-r-0 border-stone-300 px-3 outline-none" /><select value={domainId} onChange={(e) => setDomain(Number(e.target.value))} className="focus-ring max-w-52 rounded-r-md border border-stone-300 bg-stone-50 px-3 text-sm"><option value={0}>选择域名</option>{domains.filter((d) => d.enabled).map((d) => <option value={d.id} key={d.id}>@{d.name}</option>)}</select></div></label>
-    <label className="mt-4 block text-sm text-stone-700">备注<textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="focus-ring mt-1.5 min-h-20 w-full resize-y rounded-md border border-stone-300 p-3 outline-none" /></label>
-    {error && <p className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="h-10 rounded-md border border-stone-300 px-4 text-sm">取消</button><button className="h-10 rounded-md bg-[#166534] px-4 text-sm font-medium text-white">创建</button></div>
-  </form></Modal>;
-}
 
 function LoginDialog({ mailbox, onClose, onDone }: { mailbox: Mailbox; onClose: () => void; onDone: () => void }) {
   const enabling = !mailbox.external_login; const [password, setPassword] = useState(""); const [error, setError] = useState("");

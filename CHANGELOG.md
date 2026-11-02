@@ -6,6 +6,10 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Added
 
+- Modern light mail workspace with a desktop three-column layout and mobile mailbox-to-message navigation
+- Real API-backed mailbox creation, mailbox search, address copying, message search, read-state updates, verification-code copying and attachment access in the new workspace
+- Responsive mailbox-management rows for external-login, password-reset and deletion workflows on narrow screens
+- Browser-compatible clipboard fallback for test environments served over plain HTTP
 - Single-administrator Chinese management interface
 - Real Stalwart mailbox provisioning and isolated JMAP access
 - Receive-only SMTP/IMAP permission model
