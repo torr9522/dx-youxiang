@@ -1,0 +1,26 @@
+Private Mail Hub third-party notices
+====================================
+
+This project links to npm packages under permissive open-source licenses. The
+production dependency set is audited during release with license-checker and
+CycloneDX. Major direct dependencies include:
+
+- React and React DOM: MIT
+- Express, Helmet, cookie-parser, express-rate-limit: MIT
+- Zod: MIT
+- node-argon2: MIT
+- sanitize-html: MIT
+- Lucide: ISC
+
+Build and test dependencies (Vite, TypeScript, Tailwind CSS, Vitest and ESLint)
+are permissively licensed and are not shipped in the production install.
+
+Stalwart Mail Server is an independent upstream executable. Version 1.0.1 is
+downloaded from the official Stalwart Labs GitHub release and verified against
+the release SHA-256 digest. Stalwart is licensed upstream under
+AGPL-3.0-only OR LicenseRef-SEL, at the recipient's option.
+This project does not copy, modify, link, redistribute, or relicense Stalwart.
+See https://github.com/stalwartlabs/stalwart for its source and notices.
+
+Caddy, Certbot and Restic are independent system tools installed separately.
+Their upstream licenses and notices remain with their packages.

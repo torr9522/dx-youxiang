@@ -1,0 +1,6 @@
+[Unit]
+Description=Private Mail Hub readiness and disk monitor
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'curl -fsS http://127.0.0.1:3000/readyz >/dev/null && test $(df --output=pcent /var/lib/stalwart | tail -1 | tr -dc 0-9) -lt 85'

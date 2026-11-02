@@ -1,0 +1,9 @@
+[Unit]
+Description=Encrypted backup of Private Mail Hub and Stalwart
+
+[Service]
+Type=oneshot
+ExecStart=/opt/private-mail-hub/scripts/backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

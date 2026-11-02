@@ -1,0 +1,33 @@
+[Unit]
+Description=Private Mail Hub web application
+After=network-online.target stalwart.service
+Wants=network-online.target
+Requires=stalwart.service
+
+[Service]
+Type=simple
+User=private-mail-hub
+Group=private-mail-hub
+SupplementaryGroups=private-mail-hub-tls
+WorkingDirectory=/opt/private-mail-hub
+EnvironmentFile=/etc/private-mail-hub/app.env
+ExecStart=/usr/local/bin/node dist/server/index.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/private-mail-hub
+ReadOnlyPaths=/etc/private-mail-hub /var/lib/stalwart
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
