@@ -1,4 +1,4 @@
-Private Mail Hub third-party notices
+Dx 邮箱 third-party notices
 ====================================
 
 This project links to npm packages under permissive open-source licenses. The
@@ -13,11 +13,13 @@ CycloneDX. Major direct dependencies include:
 - Lucide: ISC
 
 Build and test dependencies (Vite, TypeScript, Tailwind CSS, Vitest and ESLint)
-are permissively licensed and are not shipped in the production install.
+are permissively licensed and are not shipped in the production install. SPDX
+metadata packages include CC-BY-3.0 and CC0-1.0 data; the complete dependency
+set is checked by the repository license-audit command.
 
 Stalwart Mail Server is an independent upstream executable. Version 1.0.1 is
-downloaded from the official Stalwart Labs GitHub release and verified against
-the release SHA-256 digest. Stalwart is licensed upstream under
+downloaded from the official Stalwart Labs GitHub release and verified with
+its official Sigstore bundle. Stalwart is licensed upstream under
 AGPL-3.0-only OR LicenseRef-SEL, at the recipient's option.
 This project does not copy, modify, link, redistribute, or relicense Stalwart.
 See https://github.com/stalwartlabs/stalwart for its source and notices.

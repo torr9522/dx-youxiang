@@ -14,7 +14,7 @@ import { presentMessage } from "./mail.js";
 import { StalwartClient, StalwartError } from "./stalwart.js";
 
 const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/, "邮箱前缀格式无效");
-const strongPassword = z.string().min(14).max(256).refine((value) => [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((rule) => rule.test(value)).length >= 3, "密码需包含至少三类字符");
+const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(256);
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
 
@@ -63,7 +63,12 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     try {
       const stat = await fs.statfs(config.MAIL_STORAGE_PATH);
       const free = stat.bavail * stat.bsize;
-      checks.mailStorage = { ok: free > 512 * 1024 * 1024, detail: `${Math.round(free / 1024 / 1024)} MiB free` };
+      const total = stat.blocks * stat.bsize;
+      const freePercent = total > 0 ? (free / total) * 100 : 0;
+      checks.mailStorage = {
+        ok: free > 512 * 1024 * 1024 && freePercent >= 15,
+        detail: `${Math.round(free / 1024 / 1024)} MiB free (${freePercent.toFixed(1)}%)`,
+      };
     } catch { checks.mailStorage = { ok: false, detail: "mail storage unavailable" }; }
     try {
       const cert = new X509Certificate(await fs.readFile(config.TLS_CERT_PATH));
@@ -199,7 +204,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   app.patch("/api/mailboxes/:id/external-login", async (req, res) => {
     const row = mailbox(req.params.id);
-    const input = parse(z.object({ enabled: z.boolean(), password: strongPassword.optional() }).superRefine((value, ctx) => {
+    const input = parse(z.object({ enabled: z.boolean(), password: mailboxPassword.optional() }).superRefine((value, ctx) => {
       if (value.enabled && !value.password) ctx.addIssue({ code: "custom", message: "开启外部登录时必须设置新密码", path: ["password"] });
     }), req.body);
     await stalwart.setExternalLogin(row.stalwart_account_id, input.enabled, input.password);
@@ -210,7 +215,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   app.post("/api/mailboxes/:id/password", async (req, res) => {
     const row = mailbox(req.params.id);
-    const { password } = parse(z.object({ password: strongPassword }), req.body);
+    const { password } = parse(z.object({ password: mailboxPassword }), req.body);
     await stalwart.updateMailbox(row.stalwart_account_id, { credentials: { "0": { "@type": "Password", secret: password } } });
     audit(db, req, "mailbox.password.reset", "mailbox", String(row.id));
     res.status(204).end();

@@ -35,7 +35,7 @@ export function App() {
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-[#dbe1dc] bg-[#17241d] text-white transition-transform lg:translate-x-0 ${sidebar ? "translate-x-0" : "-translate-x-full"}`}>
       <div className="flex h-16 items-center gap-3 border-b border-white/10 px-5">
         <div className="grid h-9 w-9 place-items-center rounded-md bg-[#d6f5df] text-[#14532d]"><Inbox size={20} /></div>
-        <div><div className="font-semibold">Private Mail Hub</div><div className="text-xs text-[#aebbb3]">接收管理中心</div></div>
+        <div><div className="font-semibold">Dx 邮箱</div><div className="text-xs text-[#aebbb3]">接收管理中心</div></div>
         <button className="ml-auto lg:hidden" onClick={() => setSidebar(false)} aria-label="关闭"><X size={19} /></button>
       </div>
       <nav className="flex-1 space-y-1 p-3">

@@ -4,7 +4,7 @@ import argon2 from "argon2";
 import type { AppDatabase } from "./db.js";
 import type { Config } from "./config.js";
 
-export const SESSION_COOKIE = "pmh_session";
+export const SESSION_COOKIE = "dx_session";
 
 function digest(value: string, secret: string) {
   return createHmac("sha256", secret).update(value).digest("hex");

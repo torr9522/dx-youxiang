@@ -4,7 +4,7 @@ import { createApp } from "./app.js";
 const config = loadConfig();
 const { app, db } = createApp(config);
 const server = app.listen(config.PORT, config.HOST, () => {
-  console.log(JSON.stringify({ level: "info", message: "Private Mail Hub started", host: config.HOST, port: config.PORT }));
+  console.log(JSON.stringify({ level: "info", message: "Dx 邮箱 started", host: config.HOST, port: config.PORT }));
 });
 
 function shutdown(signal: string) {

@@ -8,11 +8,13 @@ import { createApp } from "../src/server/app.js";
 import { AppDatabase } from "../src/server/db.js";
 import type { Config } from "../src/server/config.js";
 
-const temp = mkdtempSync(join(tmpdir(), "pmh-test-"));
+const temp = mkdtempSync(join(tmpdir(), "dx-youxiang-test-"));
 let context: ReturnType<typeof createApp>;
 let csrf = "";
 let cookie = "";
 const listCalls: { accountId: string; options: Record<string, unknown> }[] = [];
+const externalLoginCalls: { accountId: string; enabled: boolean; password?: string }[] = [];
+const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[] = [];
 
 const fake = {
   session: async () => ({}),
@@ -33,6 +35,8 @@ const fake = {
     : { id: "inbox-b", totalEmails: 0, unreadEmails: 0 },
   setSeen: async () => undefined,
   deleteMessage: async () => undefined,
+  setExternalLogin: async (accountId: string, enabled: boolean, password?: string) => { externalLoginCalls.push({ accountId, enabled, password }); },
+  updateMailbox: async (accountId: string, patch: Record<string, unknown>) => { updateMailboxCalls.push({ accountId, patch }); },
 } as any;
 
 beforeAll(async () => {
@@ -107,6 +111,26 @@ describe("API access control", () => {
     expect(second.body).toMatchObject({ total: 3, position: 2 });
     expect(second.body.list).toHaveLength(1);
     expect(empty.body).toMatchObject({ total: 0, position: 0, list: [] });
+  });
+
+  it("accepts six-character mailbox passwords without composition rules", async () => {
+    await request(context.app).patch("/api/mailboxes/1/external-login")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ enabled: true, password: "123456" }).expect(204);
+    await request(context.app).post("/api/mailboxes/1/password")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ password: "aaaaaa" }).expect(204);
+    expect(externalLoginCalls.at(-1)).toEqual({ accountId: "account-a", enabled: true, password: "123456" });
+    expect(updateMailboxCalls.at(-1)).toEqual({ accountId: "account-a", patch: { credentials: { "0": { "@type": "Password", secret: "aaaaaa" } } } });
+  });
+
+  it("rejects mailbox passwords shorter than six characters", async () => {
+    await request(context.app).patch("/api/mailboxes/1/external-login")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ enabled: true, password: "12345" }).expect(400);
+    await request(context.app).post("/api/mailboxes/1/password")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ password: "abcde" }).expect(400);
   });
 
   it("accepts a valid CSRF token", async () => {

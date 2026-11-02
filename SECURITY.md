@@ -10,7 +10,7 @@ Do not open a public issue containing credentials, message content, server addre
 
 ## Deployment requirements
 
-- Keep `/etc/private-mail-hub`, `/etc/stalwart`, TLS private keys and Restic passwords root-readable only as documented.
+- Keep `/etc/dx-youxiang`, `/etc/stalwart`, TLS private keys and Restic passwords root-readable only as documented.
 - Bind Stalwart HTTP/JMAP and the Node application to loopback.
 - Do not open ports 465, 587, 995 or 4190.
 - Keep outbound TCP 25, 465 and 587 blocked.

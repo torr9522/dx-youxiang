@@ -11,7 +11,7 @@ export function LoginPage({ onLogin }: { onLogin: (csrf: string) => void }) {
     <main className="w-full max-w-sm">
       <div className="mb-7 flex items-center justify-center gap-3">
         <div className="grid h-11 w-11 place-items-center rounded-md bg-[#14532d] text-white"><Inbox size={23} /></div>
-        <div><h1 className="text-xl font-semibold text-stone-900">Private Mail Hub</h1><p className="text-sm text-stone-500">私人邮箱管理中心</p></div>
+        <div><h1 className="text-xl font-semibold text-stone-900">Dx 邮箱</h1><p className="text-sm text-stone-500">私人邮箱管理中心</p></div>
       </div>
       <form className="rounded-lg border border-stone-200 bg-white p-6 shadow-sm" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");

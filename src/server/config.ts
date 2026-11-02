@@ -14,7 +14,7 @@ const schema = z.object({
   STALWART_BASE_URL: z.string().url(),
   STALWART_USERNAME: z.string().min(1),
   STALWART_PASSWORD: z.string().min(1),
-  TLS_CERT_PATH: z.string().default("/etc/private-mail-hub/tls/fullchain.pem"),
+  TLS_CERT_PATH: z.string().default("/etc/dx-youxiang/tls/fullchain.pem"),
   MAIL_STORAGE_PATH: z.string().default("/var/lib/stalwart"),
   TRUST_PROXY: z.string().default("loopback"),
 });

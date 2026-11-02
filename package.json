@@ -1,5 +1,5 @@
 {
-  "name": "private-mail-hub",
+  "name": "dx-youxiang",
   "version": "0.1.0",
   "private": true,
   "description": "A receive-only, single-admin mailbox management hub for Stalwart Mail Server.",
@@ -18,9 +18,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "lint": "eslint .",
-    "audit:licenses": "license-checker-rseidelsohn --production --excludePrivatePackages --onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Python-2.0;CC-BY-4.0;BlueOak-1.0.0'",
+    "audit:licenses": "license-checker-rseidelsohn --excludePrivatePackages --onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Python-2.0;CC-BY-3.0;CC-BY-4.0;CC0-1.0;BlueOak-1.0.0'",
     "audit:secrets": "gitleaks git --redact --no-banner",
-    "sbom": "cyclonedx-npm --output-file sbom.cdx.json --omit dev",
+    "sbom": "npm sbom --omit=dev --sbom-format=cyclonedx > sbom.cdx.json",
     "admin:hash": "node scripts/hash-password.mjs"
   },
   "dependencies": {
@@ -36,33 +36,36 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@cyclonedx/cyclonedx-npm": "latest",
-    "@eslint/js": "latest",
+    "@eslint/js": "10.0.1",
     "@tailwindcss/vite": "4.3.3",
-    "@types/cookie-parser": "latest",
-    "@types/express": "latest",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@types/sanitize-html": "latest",
-    "@types/supertest": "latest",
-    "@vitejs/plugin-react": "latest",
-    "concurrently": "latest",
-    "eslint": "latest",
-    "eslint-plugin-react-hooks": "latest",
-    "eslint-plugin-react-refresh": "latest",
-    "globals": "latest",
-    "license-checker-rseidelsohn": "latest",
+    "@types/cookie-parser": "1.4.10",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/sanitize-html": "2.16.2",
+    "@types/supertest": "7.2.1",
+    "@vitejs/plugin-react": "6.1.2",
+    "concurrently": "10.0.6",
+    "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "globals": "17.14.0",
+    "license-checker-rseidelsohn": "5.0.1",
     "supertest": "7.3.1",
     "tailwindcss": "4.3.3",
-    "tsx": "latest",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "latest",
+    "typescript-eslint": "8.72.1",
     "vite": "8.3.5",
     "vitest": "5.0.5"
   },
   "allowScripts": {
     "argon2@0.45.1": true,
     "esbuild@0.28.2": true
+  },
+  "overrides": {
+    "glob": "14.0.2",
+    "minimatch": "11.0.1"
   }
 }
