@@ -26,10 +26,10 @@ Node.js 26 LTS, Stalwart 1.0.1 and Caddy 2.11.7 are pinned. The installer verifi
 
 ## Installation
 
-An RC is installed from its immutable GitHub Release asset. A minimal Debian installation may contain neither `curl` nor `wget`, so the single command first installs the TLS bootstrap dependencies with Debian's package manager. Example for `v0.1.0-rc.6`:
+An RC is installed from its immutable GitHub Release asset. A minimal Debian installation may contain neither `curl` nor `wget`, so the single command first installs the TLS bootstrap dependencies with Debian's package manager. Example for `v0.1.0-rc.7`:
 
 ```sh
-apt-get update && apt-get install -y ca-certificates curl tar && DX_YOUXIANG_VERSION=0.1.0-rc.6 bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.0-rc.6/install.sh)
+apt-get update && apt-get install -y ca-certificates curl tar && DX_YOUXIANG_VERSION=0.1.0-rc.7 bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.0-rc.7/install.sh)
 ```
 
 The installer asks only for the mail domain, mail hostname, and administrator password. It verifies public and authoritative A/MX answers, release checksums, pinned upstream binaries, Caddy configuration, TLS issuance, systemd services, firewall policy, initial encrypted backup, and readiness. It never edits DNS.

@@ -29,5 +29,10 @@ describe("legacy migration safety contracts", () => {
     expect(migration).toContain('mv "$rollback/installed-app.db" "$data_dir/app.db"');
     expect(migration).toContain('rm -rf -- "$new_store"');
     expect(migration).toContain('rm -f -- "$new_db"');
+    expect(migration).toContain('http://127.0.0.1:"$app_port"/healthz');
+    expect(migration).toContain('test "$attempt" -le 45 || { echo "imported application did not become healthy; rollback is in $rollback"');
+    expect(migration.indexOf('http://127.0.0.1:"$app_port"/healthz')).toBeLessThan(
+      migration.indexOf('"$app_base/current/scripts/health-check.sh"'),
+    );
   });
 });

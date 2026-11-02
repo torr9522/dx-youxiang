@@ -212,6 +212,13 @@ mv "$config_dir/app.env.new" "$config_dir/app.env"
 
 systemctl restart stalwart
 systemctl start dx-youxiang
+attempt=1
+while test "$attempt" -le 45; do
+  curl -fsS --max-time 2 http://127.0.0.1:"$app_port"/healthz >/dev/null 2>&1 && break
+  sleep 1
+  attempt=$((attempt + 1))
+done
+test "$attempt" -le 45 || { echo "imported application did not become healthy; rollback is in $rollback" >&2; exit 1; }
 "$app_base/current/scripts/health-check.sh"
 services_stopped=0
 

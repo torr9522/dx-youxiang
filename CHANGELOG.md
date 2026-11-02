@@ -36,3 +36,4 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Stage protected Stalwart exports in that traversable directory so root-private restore sources remain readable during import
 - Validate archive member paths with an executable regression-tested AWK policy
 - Automatically restart or roll back installed services and remove incomplete candidate stores when legacy migration fails
+- Wait for the migrated web process to become healthy before running the full post-migration readiness gate
