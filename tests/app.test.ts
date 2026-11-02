@@ -19,9 +19,14 @@ const fake = {
   getMessage: async (accountId: string, emailId: string) => accountId === "account-a" && emailId === "email-a" ? { id: "email-a", subject: "A only", textBody: [], htmlBody: [], bodyValues: {} } : null,
   listMessages: async (accountId: string, options: Record<string, unknown>) => {
     listCalls.push({ accountId, options });
-    return accountId === "account-a"
-      ? { total: 3, position: Number(options.position), list: [{ id: "email-a", subject: "A only", keywords: {} }] }
-      : { total: 0, position: Number(options.position), list: [] };
+    const position = Number(options.position);
+    if (accountId !== "account-a") return { total: 0, position, list: [] };
+    const messages = [
+      { id: "email-a", subject: "A only", keywords: {} },
+      { id: "email-a2", subject: "A second", keywords: { "$seen": true } },
+      { id: "email-a3", subject: "A third", keywords: {} },
+    ];
+    return { total: messages.length, position, list: messages.slice(position, position + Number(options.limit)) };
   },
   mailboxStats: async (accountId: string) => accountId === "account-a"
     ? { id: "inbox-a", totalEmails: 3, unreadEmails: 1 }
@@ -91,6 +96,17 @@ describe("API access control", () => {
       accountId: "account-a",
       options: { query: "needle", field: "subject", ascending: true, position: 50, limit: 25 },
     });
+  });
+
+  it("paginates multiple messages and returns an empty mailbox", async () => {
+    const first = await request(context.app).get("/api/mailboxes/1/messages?position=0&limit=2").set("Cookie", cookie).expect(200);
+    const second = await request(context.app).get("/api/mailboxes/1/messages?position=2&limit=2").set("Cookie", cookie).expect(200);
+    const empty = await request(context.app).get("/api/mailboxes/2/messages?position=0&limit=2").set("Cookie", cookie).expect(200);
+    expect(first.body).toMatchObject({ total: 3, position: 0 });
+    expect(first.body.list).toHaveLength(2);
+    expect(second.body).toMatchObject({ total: 3, position: 2 });
+    expect(second.body.list).toHaveLength(1);
+    expect(empty.body).toMatchObject({ total: 0, position: 0, list: [] });
   });
 
   it("accepts a valid CSRF token", async () => {
