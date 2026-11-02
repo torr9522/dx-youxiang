@@ -3,8 +3,8 @@ Description=Retry initial Dx Youxiang certificate issuance until successful
 
 [Timer]
 OnBootSec=30m
-OnUnitActiveSec=12h
-RandomizedDelaySec=30m
+OnUnitActiveSec=30m
+RandomizedDelaySec=5m
 Persistent=true
 
 [Install]

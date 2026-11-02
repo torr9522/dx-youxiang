@@ -36,12 +36,21 @@ describe("native installer contracts", () => {
 
   it("keeps initial certificate retry separate from Certbot renewal ownership", async () => {
     const obtain = await readFile("scripts/obtain-certificate.sh", "utf8");
+    const retry = await readFile("scripts/retry-initial-certificate.sh", "utf8");
     const retryService = await readFile("deploy/systemd/dx-youxiang-certificate-retry.service", "utf8");
     const retryTimer = await readFile("deploy/systemd/dx-youxiang-certificate-retry.timer", "utf8");
 
     expect(obtain).toContain("--non-interactive");
     expect(obtain).toContain("systemctl disable --now dx-youxiang-certificate-retry.timer");
+    expect(retry).toContain("ACME issuance deferred until");
+    expect(retry).toContain("retry after");
     expect(retryService).toContain("EnvironmentFile=/etc/dx-youxiang/certificate.env");
-    expect(retryTimer).toContain("OnUnitActiveSec=12h");
+    expect(retryService).toContain("retry-initial-certificate.sh");
+    expect(retryTimer).toContain("OnUnitActiveSec=30m");
+  });
+
+  it("defaults the public bootstrap installer to the stable release", async () => {
+    const bootstrap = await readFile("install.sh", "utf8");
+    expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.0}");
   });
 });

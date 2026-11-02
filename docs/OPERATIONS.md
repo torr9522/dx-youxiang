@@ -20,4 +20,4 @@ Track `/var/lib/stalwart`, `/var/lib/dx-youxiang` and the off-host backup reposi
 
 ## Certificate renewal
 
-Certbot owns ACME. Its deploy hook atomically replaces the shared certificate and calls Stalwart's `ReloadTlsCertificates` action, which does not interrupt existing connections, then reloads Caddy. The `dx-youxiang-certificate-retry.timer` exists only while initial issuance has not succeeded and disables itself after success; `certbot.timer` owns all later renewals. Do not enable Stalwart ACME or Caddy automatic HTTPS for the same hostname.
+Certbot owns ACME. Its deploy hook atomically replaces the shared certificate and calls Stalwart's `ReloadTlsCertificates` action, which does not interrupt existing connections, then reloads Caddy. The `dx-youxiang-certificate-retry.timer` exists only while initial issuance has not succeeded and disables itself after success; it records and honors an ACME `retry after` time without contacting the CA early. `certbot.timer` owns all later renewals. Do not enable Stalwart ACME or Caddy automatic HTTPS for the same hostname.

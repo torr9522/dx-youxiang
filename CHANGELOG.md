@@ -41,3 +41,5 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Enable backup, monitoring and Certbot renewal before the first ACME request
 - Retry only failed initial certificate issuance and hand successful certificates to Certbot renewal
 - Reject self-signed bootstrap and hostname-mismatched certificates from `/readyz`
+- Honor ACME `retry after` responses without submitting repeated certificate orders before the limit resets
+- Default the public bootstrap installer to the stable `0.1.0` release instead of an obsolete candidate
