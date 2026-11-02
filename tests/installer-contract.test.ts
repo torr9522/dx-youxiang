@@ -12,4 +12,15 @@ describe("native installer contracts", () => {
     expect(installer.slice(0, firstStart)).toContain("test ! -e /etc/stalwart/config.json");
     expect(installer.slice(0, bootstrap)).not.toMatch(/(?:>|tee)[^\n]*\/etc\/stalwart\/config\.json/);
   });
+
+  it("runs the canonical application migration before seeding the default domain", async () => {
+    const installer = await readFile("scripts/install.sh", "utf8");
+    const applicationStart = installer.indexOf("systemctl enable --now dx-youxiang\n");
+    const healthCheck = installer.indexOf('wait_http "http://127.0.0.1:$APP_PORT/healthz"');
+    const domainSeed = installer.indexOf('node "$APP_BASE/current/scripts/seed-domain.mjs"');
+
+    expect(applicationStart).toBeGreaterThan(0);
+    expect(healthCheck).toBeGreaterThan(applicationStart);
+    expect(domainSeed).toBeGreaterThan(healthCheck);
+  });
 });

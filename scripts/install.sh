@@ -327,12 +327,11 @@ RESTIC_PASSWORD_FILE=$CONFIG_DIR/restic-password
 EOF
 chmod 0600 "$CONFIG_DIR/restic-password" "$CONFIG_DIR/restic.env"
 
+systemctl enable --now dx-youxiang
+wait_http "http://127.0.0.1:$APP_PORT/healthz"
 node "$APP_BASE/current/scripts/seed-domain.mjs" "$DATA_DIR/app.db" "$domain_id" "$MAIL_DOMAIN"
 chown dx-youxiang:dx-youxiang "$DATA_DIR"/app.db*
 chmod 0600 "$DATA_DIR"/app.db*
-
-systemctl enable --now dx-youxiang
-wait_http "http://127.0.0.1:$APP_PORT/healthz"
 if test "$install_mode" = fresh; then
   systemctl enable --now caddy
 else

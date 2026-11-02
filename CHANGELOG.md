@@ -31,3 +31,4 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Rotate an existing Dx 邮箱 service identity and update imported certificate paths during migration
 - Preserve Stalwart's first-run bootstrap mode by letting `x:Bootstrap/set` create `config.json`
 - Refuse to overwrite an existing Stalwart registry configuration during installation
+- Start the application schema migration before seeding the default domain on a fresh database
