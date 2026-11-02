@@ -60,7 +60,8 @@ install -d -o stalwart -g stalwart -m 0750 /etc/stalwart /var/lib/stalwart /var/
 # their own restrictive owner/group modes, while 0711 prevents directory listing.
 install -d -o root -g root -m 0711 /etc/private-mail-hub
 install -d -o root -g private-mail-hub-tls -m 0750 /etc/private-mail-hub/tls
-install -d -o private-mail-hub -g private-mail-hub -m 0750 /var/lib/private-mail-hub /var/lib/private-mail-hub/acme
+install -d -o private-mail-hub -g private-mail-hub -m 0711 /var/lib/private-mail-hub
+install -d -o private-mail-hub -g private-mail-hub -m 0755 /var/lib/private-mail-hub/acme
 install -d -o caddy -g caddy -m 0750 /etc/caddy /var/lib/caddy /var/log/caddy
 install -d -o root -g root -m 0700 /var/backups/private-mail-hub
 
