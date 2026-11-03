@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Inbox, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, ImageIcon, Inbox, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import { api, type Domain, type Mailbox, type MessageDetail, type MessageSummary } from "../api";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
 import { copyText } from "../lib/clipboard";
@@ -30,10 +30,13 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
   const [mobileStage, setMobileStage] = useState<MobileStage>(initialMailboxId ? "messages" : "mailboxes");
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [showRemoteImages, setShowRemoteImages] = useState(false);
+  const [remoteImageStatus, setRemoteImageStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const requestId = useRef(0);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const mailBodyRef = useRef<HTMLDivElement>(null);
   const messageScrollTop = useRef(0);
 
   const selectedMailbox = mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
@@ -107,6 +110,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
   const openMessage = async (message: MessageSummary) => {
     if (!selectedMailboxId) return;
     setDetailLoading(true);
+    setShowRemoteImages(false);
+    setRemoteImageStatus("idle");
     setError("");
     try {
       const detail = await api<MessageDetail>(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(message.id)}`);
@@ -128,6 +133,58 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
       setDetailLoading(false);
     }
   };
+
+  useEffect(() => {
+    const container = mailBodyRef.current;
+    if (!container || !selectedMessage?.html) return;
+    const fitOversizedTables = () => {
+      for (const table of container.querySelectorAll<HTMLTableElement>("table:not([data-mail-responsive])")) {
+        if (table.getBoundingClientRect().width > container.clientWidth) table.dataset.mailResponsive = "true";
+      }
+    };
+    fitOversizedTables();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(fitOversizedTables);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [selectedMessage?.id, selectedMessage?.html]);
+
+  useEffect(() => {
+    const container = mailBodyRef.current;
+    if (!container || !selectedMessage?.html) return;
+    const images = Array.from(container.querySelectorAll<HTMLImageElement>("img[data-remote-src]"));
+    if (!showRemoteImages) {
+      for (const image of images) {
+        image.removeAttribute("src");
+        image.dataset.remoteState = "blocked";
+      }
+      return;
+    }
+    if (!images.length) return;
+    let pending = images.length;
+    let failures = 0;
+    let active = true;
+    const completed = () => {
+      pending -= 1;
+      if (active && pending === 0) setRemoteImageStatus(failures ? "error" : "loaded");
+    };
+    const listeners = images.map((image) => {
+      const loaded = () => { image.dataset.remoteState = "loaded"; completed(); };
+      const failed = () => { failures += 1; image.dataset.remoteState = "error"; image.removeAttribute("src"); completed(); };
+      image.dataset.remoteState = "loading";
+      image.addEventListener("load", loaded, { once: true });
+      image.addEventListener("error", failed, { once: true });
+      image.src = image.dataset.remoteSrc!;
+      return { image, loaded, failed };
+    });
+    return () => {
+      active = false;
+      for (const { image, loaded, failed } of listeners) {
+        image.removeEventListener("load", loaded);
+        image.removeEventListener("error", failed);
+      }
+    };
+  }, [selectedMessage?.id, selectedMessage?.html, showRemoteImages]);
 
   const markRead = async (read: boolean) => {
     if (!selectedMailboxId || !selectedMessage) return;
@@ -236,7 +293,12 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
           </div>}
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-7 lg:py-6">
-          {selectedMessage.html ? <div className="mail-html" dangerouslySetInnerHTML={{ __html: selectedMessage.html }} /> : <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-700">{selectedMessage.plain || "（邮件正文为空）"}</pre>}
+          {selectedMessage.blockedRemoteImages && <div className="remote-image-notice mb-4 flex min-w-0 flex-wrap items-center gap-2.5 border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-900">
+            <ImageIcon size={16} className="shrink-0 text-blue-600" />
+            <span className="min-w-0 flex-1">{remoteImageStatus === "loading" ? "正在安全加载远程图片..." : remoteImageStatus === "error" ? "部分图片无法安全加载。" : showRemoteImages ? "已显示本封邮件的远程图片。" : "检测到远程图片。为保护隐私，图片尚未加载。"}</span>
+            <button type="button" onClick={() => { const next = !showRemoteImages; setRemoteImageStatus(next ? "loading" : "idle"); setShowRemoteImages(next); }} className="focus-ring shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100">{showRemoteImages ? "隐藏远程图片" : "显示本封邮件的图片"}</button>
+          </div>}
+          {selectedMessage.html ? <div ref={mailBodyRef} className="mail-html" dangerouslySetInnerHTML={{ __html: selectedMessage.html }} /> : <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-700">{selectedMessage.plain || "（邮件正文为空）"}</pre>}
           {!!selectedMessage.attachments?.length && <section className="mt-8 border-t border-slate-200 pt-4"><h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-800"><Paperclip size={16} />附件 ({selectedMessage.attachments.length})</h3><div className="grid gap-2 sm:grid-cols-2">{selectedMessage.attachments.map((attachment) => <a key={attachment.blobId} href={`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(selectedMessage.id)}/attachments/${encodeURIComponent(attachment.blobId)}`} className="focus-ring flex min-h-12 min-w-0 items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50"><FileText size={18} className="shrink-0 text-blue-600" /><span className="min-w-0 flex-1"><span className="block truncate">{attachment.name || "附件"}</span>{typeof attachment.size === "number" && <span className="mt-0.5 block text-xs text-slate-400">{formatBytes(attachment.size)}</span>}</span><Download size={16} className="shrink-0 text-slate-400" /></a>)}</div></section>}
         </div>
       </>}

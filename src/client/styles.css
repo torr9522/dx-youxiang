@@ -62,7 +62,13 @@ button:disabled { cursor: not-allowed; }
 .mail-html table { max-width: 100%; }
 .mail-html img { max-width: 100%; height: auto; }
 .mail-address-full { overflow-wrap: anywhere; }
-.remote-image-blocked::after { content: "[远程图片已阻止]"; color: var(--color-muted); font-size: 12px; }
+.remote-image-notice { border-radius: var(--radius-control); }
+.mail-html img[data-remote-state="blocked"],
+.mail-html img[data-remote-state="loading"],
+.mail-html img[data-remote-state="error"] { min-width: 8rem; min-height: 2.25rem; padding: .5rem; border: 1px dashed #cbd5e1; border-radius: 4px; background: #f8fafc; color: var(--color-muted); font-size: 12px; }
+.mail-html img[data-remote-state="loading"] { opacity: .65; }
+.mail-html img[data-remote-state="error"] { border-color: #fecaca; background: #fef2f2; }
+.mail-html [data-inline-image="missing"] { color: var(--color-muted); font-size: 12px; }
 @media (max-width: 980px) and (min-width: 768px) {
   .mail-workspace { grid-template-columns: minmax(220px, 25%) minmax(320px, 37%) minmax(0, 1fr); }
 }
@@ -76,6 +82,6 @@ button:disabled { cursor: not-allowed; }
   .modal-backdrop { align-items: start; padding-top: max(1rem, env(safe-area-inset-top)); padding-right: max(1rem, env(safe-area-inset-right)); padding-bottom: max(1rem, env(safe-area-inset-bottom)); padding-left: max(1rem, env(safe-area-inset-left)); }
   .modal-panel { max-height: calc(100dvh - max(2rem, env(safe-area-inset-top) + env(safe-area-inset-bottom))); }
   input, select, textarea { font-size: 16px; }
-  .mail-html table { max-width: none; }
+  .mail-html table[data-mail-responsive="true"] { width: 100% !important; max-width: 100% !important; }
   .mobile-toast { bottom: max(1.25rem, env(safe-area-inset-bottom)); }
 }

@@ -18,6 +18,7 @@ const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[
 const createMailboxCalls: { localPart: string; domainId: string; description: string }[] = [];
 const deleteMailboxCalls: string[] = [];
 let createdAccountSequence = 0;
+const inlinePng = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 
 describe("TLS readiness", () => {
   const future = new Date(Date.now() + 30 * 86_400_000).toUTCString();
@@ -54,7 +55,11 @@ describe("TLS readiness", () => {
 
 const fake = {
   session: async () => ({}),
-  getMessage: async (accountId: string, emailId: string) => accountId === "account-a" && emailId === "email-a" ? { id: "email-a", subject: "A only", textBody: [], htmlBody: [], bodyValues: {} } : null,
+  getMessage: async (accountId: string, emailId: string) => accountId === "account-a" && emailId === "email-a" ? {
+    id: "email-a", subject: "A only", textBody: [], htmlBody: [{ partId: "html" }],
+    bodyValues: { html: { value: '<img src="cid:logo@example.test"><img src="https://remote.example.test/pixel.png?secret=value">' } },
+    attachments: [{ blobId: "inline-blob", cid: "<logo@example.test>", type: "image/png", size: inlinePng.length }],
+  } : null,
   listMessages: async (accountId: string, options: Record<string, unknown>) => {
     listCalls.push({ accountId, options });
     const position = Number(options.position);
@@ -82,6 +87,7 @@ const fake = {
     deleteMailboxCalls.push(accountId);
     if (accountId === "account-b") throw new Error("simulated account deletion failure");
   },
+  download: async () => new Response(inlinePng, { headers: { "content-type": "image/png" } }),
 } as any;
 
 beforeAll(async () => {
@@ -130,7 +136,30 @@ describe("API access control", () => {
   it("derives the Stalwart account id from the selected mailbox", async () => {
     const own = await request(context.app).get("/api/mailboxes/1/messages/email-a").set("Cookie", cookie).expect(200);
     expect(own.body.subject).toBe("A only");
+    expect(own.body.html).toContain("/api/mailboxes/1/messages/email-a/inline-images/inline-blob");
+    expect(own.body.html).toContain("/api/mailboxes/1/messages/email-a/remote-images/");
+    expect(own.body.html).not.toContain("remote.example.test");
     await request(context.app).get("/api/mailboxes/2/messages/email-a?accountId=account-a").set("Cookie", cookie).expect(404);
+  });
+
+  it("serves CID images only through the owning mailbox and validates image content", async () => {
+    const own = await request(context.app).get("/api/mailboxes/1/messages/email-a/inline-images/inline-blob").set("Cookie", cookie).expect(200);
+    expect(own.headers["content-type"]).toBe("image/png");
+    expect(own.headers["x-content-type-options"]).toBe("nosniff");
+    expect(own.body).toEqual(inlinePng);
+    await request(context.app).get("/api/mailboxes/2/messages/email-a/inline-images/inline-blob").set("Cookie", cookie).expect(404);
+    await request(context.app).get("/api/mailboxes/1/messages/email-a/inline-images/other-blob").set("Cookie", cookie).expect(404);
+  });
+
+  it("rejects tampered or cross-message remote image tokens", async () => {
+    const detail = await request(context.app).get("/api/mailboxes/1/messages/email-a").set("Cookie", cookie).expect(200);
+    const path = /data-remote-src="([^"]+)"/.exec(detail.body.html)?.[1]?.replaceAll("&amp;", "&");
+    expect(path).toBeTruthy();
+    const parts = String(path).split("/");
+    const token = parts.at(-1)!;
+    parts[parts.length - 1] = `${token.slice(0, 10)}${token[10] === "a" ? "b" : "a"}${token.slice(11)}`;
+    await request(context.app).get(parts.join("/")).set("Cookie", cookie).expect(400);
+    await request(context.app).get(String(path).replace("/messages/email-a/", "/messages/email-b/")).set("Cookie", cookie).expect(404);
   });
 
   it("preserves the numeric application id when Stalwart returns an inbox id", async () => {

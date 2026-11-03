@@ -18,7 +18,8 @@ Dx Youxiang
 |   `-- optional IMAP authentication with independent password
 |-- Inbox
 |   |-- account- and Inbox-scoped list/search/pagination
-|   |-- plain and sanitized HTML body
+|   |-- plain and sanitized layout-preserving HTML body
+|   |-- authenticated CID images and consent-based remote image proxy
 |   |-- verification-code extraction
 |   |-- attachment ownership check and download
 |   `-- read/unread and delete
@@ -31,6 +32,10 @@ Dx Youxiang
 ```
 
 Junk browsing, sending, reply, forward, POP3, Exchange, public registration, multiple administrators, containers, client auto-configuration, and immediate termination of existing IMAP sessions are outside `0.1.0`.
+
+## Future Backlog
+
+- In-place translation of the displayed email body (not implemented in Phase 1.5)
 
 ## Codex Project Skills
 

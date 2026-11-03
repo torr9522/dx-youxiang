@@ -40,7 +40,7 @@ describe("mail workspace", () => {
     if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([mailbox]);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
     if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return json({ list: [message], total: 1, position: 0 });
-    if (url === "/api/mailboxes/7/messages/m1" && (!init?.method || init.method === "GET")) return json({ ...message, plain: "Your code is 482731", html: "", blockedRemoteImages: false, verificationCode: "482731", attachments: [{ blobId: "b1", name: "notice.txt", size: 12 }] });
+    if (url === "/api/mailboxes/7/messages/m1" && (!init?.method || init.method === "GET")) return json({ ...message, plain: "Your code is 482731", html: '<p>Your code is 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', blockedRemoteImages: true, verificationCode: "482731", attachments: [{ blobId: "b1", name: "notice.txt", size: 12 }] });
     if (url === "/api/mailboxes/7/messages/m1/read" && init?.method === "PATCH") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes" && init?.method === "POST") return json({ id: 8, address: "created@example.test", external_login: 0 }, 201);
     throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
@@ -110,6 +110,19 @@ describe("mail workspace", () => {
     await screen.findByText(message.subject);
     expect(screen.getByLabelText("邮件列表").className).toContain("flex");
     expect(screen.getByLabelText("邮箱列表").className).toContain("hidden");
+  });
+
+  it("loads remote images only after per-message consent and can hide them again", async () => {
+    const user = userEvent.setup();
+    render(<MailWorkspacePage onManage={() => undefined} />);
+    await user.click(await screen.findByText(message.subject));
+    const image = await screen.findByAltText("Remote logo") as HTMLImageElement;
+    expect(image.hasAttribute("src")).toBe(false);
+    expect(screen.getByText("检测到远程图片。为保护隐私，图片尚未加载。")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "显示本封邮件的图片" }));
+    await waitFor(() => expect(image.getAttribute("src")).toBe("/api/proxy/image-token"));
+    await user.click(screen.getByRole("button", { name: "隐藏远程图片" }));
+    await waitFor(() => expect(image.hasAttribute("src")).toBe(false));
   });
 });
 

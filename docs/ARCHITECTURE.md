@@ -37,6 +37,7 @@ Stalwart uses its recommended single-node RocksDB store with the default blob an
 - `src/server/stalwart.ts`: JMAP and Stalwart management adapter.
 - `src/server/security.ts`: administrator session, CSRF, cookies, audit records.
 - `src/server/mail.ts`: body presentation, HTML sanitization, verification-code extraction.
+- `src/server/remote-images.ts`: message-bound image tokens, SSRF controls and raster validation.
 - `scripts/bootstrap-stalwart.mjs`: one-time service identity, listeners, TLS and permission configuration.
 - `scripts/*.sh` and `deploy`: native lifecycle, systemd, Caddy, Certbot, nftables and backup assets.
 

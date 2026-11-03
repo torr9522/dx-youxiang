@@ -37,4 +37,39 @@ describe("mail presentation", () => {
     expect(result.html).toContain("color:#112233");
     expect(result.html).not.toMatch(/iframe|object|onclick|url\(|position|@import/i);
   });
+
+  it("maps multiple normalized CID references to authenticated inline image routes", () => {
+    const result = presentMessage({
+      id: "message/one", htmlBody: [{ partId: "1" }], textBody: [],
+      bodyValues: { "1": { value: '<p><img src="cid:%6CogO%40example.test"><img src="cid:second@example.test"><img src="cid:missing@example.test"></p>' } },
+      attachments: [
+        { blobId: "blob/logo", cid: "<logo@example.test>", type: "image/png" },
+        { blobId: "blob-two", cid: "second@example.test", type: "image/jpeg" },
+      ],
+    }, { mailboxId: 7, emailId: "message/one", sessionSecret: "s".repeat(32) });
+    expect(result.html).toContain("/api/mailboxes/7/messages/message%2Fone/inline-images/blob%2Flogo");
+    expect(result.html).toContain("/api/mailboxes/7/messages/message%2Fone/inline-images/blob-two");
+    expect(result.html).toContain("[内嵌图片不可用]");
+    expect(result.html).not.toContain("cid:");
+  });
+
+  it("replaces remote URLs with opaque per-message proxy routes", () => {
+    const source = "https://images.example.test/pixel.png?user=secret-tracking-value";
+    const result = presentMessage({
+      id: "mail-a", htmlBody: [{ partId: "1" }], textBody: [],
+      bodyValues: { "1": { value: `<img src="${source}" alt="Logo">` } }, attachments: [],
+    }, { mailboxId: 3, emailId: "mail-a", sessionSecret: "s".repeat(32) });
+    expect(result.html).toContain("data-remote-src=\"/api/mailboxes/3/messages/mail-a/remote-images/");
+    expect(result.html).not.toContain(source);
+    expect(result.html).not.toContain("secret-tracking-value");
+  });
+
+  it("rejects active image sources and application utility classes", () => {
+    const result = presentMessage({
+      htmlBody: [{ partId: "1" }], textBody: [], attachments: [],
+      bodyValues: { "1": { value: '<div class="fixed inset-0 z-50">Text<img src="data:image/svg+xml,<svg onload=alert(1)></svg>"><img src="javascript:alert(2)"></div>' } },
+    }, { mailboxId: 1, emailId: "mail", sessionSecret: "s".repeat(32) });
+    expect(result.html).toContain("Text");
+    expect(result.html).not.toMatch(/class=|data:image|svg|javascript:|onload/i);
+  });
 });

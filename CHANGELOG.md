@@ -7,6 +7,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 ### Changed
 
 - Preserve common table-based email structure and allowlisted inline presentation styles without allowing external CSS, active content or application-wide style leakage
+- Render authenticated CID raster images from the owning message and add per-message consent for privacy-safe remote image loading
+- Proxy consented remote images through DNS-pinned public destinations with redirect, timeout, size, MIME and file-signature validation
 
 ## [0.1.2] - 2026-11-03
 

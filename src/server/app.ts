@@ -10,7 +10,8 @@ import { z } from "zod";
 import type { Config } from "./config.js";
 import { AppDatabase, type MailboxRow } from "./db.js";
 import { AuthService, audit } from "./security.js";
-import { presentMessage } from "./mail.js";
+import { presentMessage, remoteImageUrls } from "./mail.js";
+import { fetchRemoteImage, MAX_IMAGE_BYTES, openRemoteImage, readLimitedImage } from "./remote-images.js";
 import { StalwartClient, StalwartError } from "./stalwart.js";
 
 const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/, "邮箱前缀格式无效");
@@ -345,7 +346,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     const row = mailbox(req.params.id);
     const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
     if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
-    res.json(presentMessage(message));
+    res.json(presentMessage(message, { mailboxId: row.id, emailId: req.params.emailId, sessionSecret: config.SESSION_SECRET }));
   });
 
   app.patch("/api/mailboxes/:id/messages/:emailId/read", async (req, res) => {
@@ -379,6 +380,52 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     });
     if (upstream.body) return void (await import("node:stream")).Readable.fromWeb(upstream.body as any).pipe(res);
     res.end();
+  });
+
+  app.get("/api/mailboxes/:id/messages/:emailId/inline-images/:blobId", async (req, res) => {
+    const row = mailbox(req.params.id);
+    const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
+    const attachment = message?.attachments?.find((item: any) => item.blobId === req.params.blobId && item.cid);
+    if (!attachment) return res.status(404).json({ error: "内嵌图片不存在于当前邮件" });
+    if (typeof attachment.size === "number" && attachment.size > MAX_IMAGE_BYTES) return res.status(413).json({ error: "图片超过大小限制" });
+    const declaredType = String(attachment.type ?? "").toLowerCase();
+    if (!new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]).has(declaredType)) return res.status(415).json({ error: "不支持的内嵌图片格式" });
+    const upstream = await stalwart.download(row.stalwart_account_id, attachment.blobId, "inline-image", declaredType);
+    const { body, type } = await readLimitedImage(upstream, declaredType);
+    res.set({
+      "content-type": type,
+      "content-length": String(body.length),
+      "content-disposition": "inline",
+      "x-content-type-options": "nosniff",
+      "cache-control": "private, max-age=3600",
+    });
+    res.end(body);
+  });
+
+  app.get("/api/mailboxes/:id/messages/:emailId/remote-images/:token", async (req, res) => {
+    const row = mailbox(req.params.id);
+    const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
+    if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
+    let imageUrl: string;
+    try {
+      imageUrl = openRemoteImage(req.params.token, row.id, req.params.emailId, config.SESSION_SECRET);
+    } catch {
+      return res.status(400).json({ error: "无效图片令牌" });
+    }
+    if (!remoteImageUrls(message).has(imageUrl)) return res.status(404).json({ error: "远程图片不存在于当前邮件" });
+    try {
+      const { body, type } = await fetchRemoteImage(imageUrl);
+      res.set({
+        "content-type": type,
+        "content-length": String(body.length),
+        "content-disposition": "inline",
+        "x-content-type-options": "nosniff",
+        "cache-control": "private, max-age=3600",
+      });
+      res.end(body);
+    } catch {
+      res.status(502).json({ error: "远程图片无法安全加载" });
+    }
   });
 
   app.get("/api/audit", (_req, res) => res.json(db.db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 200").all()));

@@ -8,9 +8,11 @@ The service identity may impersonate accounts and perform the exact management/J
 
 ## Web Controls
 
-Administrator passwords use Argon2id. Session tokens are random and stored only as hashes; cookies are HTTP-only, secure in production and SameSite strict. Mutating API requests require the session CSRF token. Login attempts are rate-limited. SQL values use prepared statements. Mail HTML is sanitized server-side and remote images are excluded by CSP/sanitization.
+Administrator passwords use Argon2id. Session tokens are random and stored only as hashes; cookies are HTTP-only, secure in production and SameSite strict. Mutating API requests require the session CSRF token. Login attempts are rate-limited. SQL values use prepared statements. Mail HTML is sanitized server-side; active elements, handlers, external CSS and URL-bearing CSS are removed.
 
 Message detail, flags, delete and attachment download first resolve the selected mailbox and repeat ownership checks in that account. A message/blob ID from another account must not be returned.
+
+CID raster images are served only after the backend finds the CID/blob pair in the selected account's named message. Remote images remain inert by default. A consent action loads opaque same-origin URLs whose encrypted tokens are bound to the mailbox and message; the backend also confirms the decrypted source still occurs in that message. The image proxy accepts only HTTP(S) on ports 80/443, pins a DNS result after rejecting every private or special result, repeats checks after redirects, enforces total time/redirect/size limits, and requires an allowed raster MIME type to match file-signature detection. It forwards no browser cookie or authorization header to the sender.
 
 ## Protocol And Network Controls
 
