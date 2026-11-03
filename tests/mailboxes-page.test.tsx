@@ -87,6 +87,21 @@ describe("mailbox management", () => {
     expect(await within(dialog).findByText("密码已重置")).toBeTruthy();
   });
 
+  it("truncates long mobile addresses while copying the complete value", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window, "isSecureContext", { configurable: true, value: true });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<MailboxesPage onMailbox={() => undefined} />);
+    await screen.findAllByText(mailbox.address);
+
+    const address = screen.getAllByText(mailbox.address).find((node) => node.className.includes("truncate"));
+    expect(address?.className).toContain("min-w-0");
+    await user.click(screen.getByLabelText(`复制 ${mailbox.address}`));
+    expect(writeText).toHaveBeenCalledWith(mailbox.address);
+    expect((await screen.findByRole("status")).textContent).toContain("邮箱地址已复制");
+  });
+
   it("creates an inclusive numeric range and rejects invalid or oversized ranges", async () => {
     const user = userEvent.setup();
     render(<MailboxesPage onMailbox={() => undefined} />);

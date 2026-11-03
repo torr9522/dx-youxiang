@@ -40,7 +40,7 @@ export function CreateMailboxDialog({ domains, onClose, onCreated }: { domains: 
       </label>
       <div className="mt-4 min-h-16 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
         <div className="text-xs text-slate-500">完整地址</div>
-        <div className="mt-1 break-all text-sm font-medium text-slate-900">{address || "输入前缀后自动生成"}</div>
+        <div title={address || undefined} className="mt-1 truncate text-sm font-medium text-slate-900">{address || "输入前缀后自动生成"}</div>
       </div>
       <label className="mt-4 block text-sm font-medium text-slate-700">备注
         <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} className="form-control mt-1.5 min-h-20 w-full resize-y p-3" />

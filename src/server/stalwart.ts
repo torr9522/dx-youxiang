@@ -110,7 +110,7 @@ export class StalwartClient {
     };
   }
 
-  async listMessages(accountId: string, options: { query?: string; field?: string; position?: number; limit?: number; ascending?: boolean }) {
+  async listMessages(accountId: string, options: { query?: string; field?: string; read?: "all" | "unread" | "read"; position?: number; limit?: number; ascending?: boolean }) {
     const mailboxResponses = await this.call([
       ["Mailbox/query", { accountId, filter: { role: "inbox" }, limit: 1 }, "inbox-query"],
     ]);
@@ -119,6 +119,8 @@ export class StalwartClient {
 
     const filter: Record<string, unknown> = { inMailbox: inboxId };
     if (options.query) filter[options.field === "from" ? "from" : options.field === "subject" ? "subject" : options.field === "body" ? "body" : "text"] = options.query;
+    if (options.read === "unread") filter.notKeyword = "$seen";
+    if (options.read === "read") filter.hasKeyword = "$seen";
     const responses = await this.call([
       ["Email/query", { accountId, filter, sort: [{ property: "receivedAt", isAscending: !!options.ascending }], position: options.position ?? 0, limit: options.limit ?? 50, calculateTotal: true }, "eq"],
       ["Email/get", { accountId, "#ids": { resultOf: "eq", name: "Email/query", path: "/ids" }, properties: ["id", "threadId", "receivedAt", "from", "to", "subject", "keywords", "hasAttachment", "preview", "size"] }, "eg"],

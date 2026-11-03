@@ -148,17 +148,18 @@ describe("API access control", () => {
     await request(context.app).get("/api/mailboxes/1/messages?position=NaN").set("Cookie", cookie).expect(400);
     await request(context.app).get("/api/mailboxes/1/messages?limit=0").set("Cookie", cookie).expect(400);
     await request(context.app).get("/api/mailboxes/1/messages?limit=101").set("Cookie", cookie).expect(400);
+    await request(context.app).get("/api/mailboxes/1/messages?read=invalid").set("Cookie", cookie).expect(400);
   });
 
   it("passes validated search, sort and pagination within the selected account", async () => {
     const response = await request(context.app)
-      .get("/api/mailboxes/1/messages?q=needle&field=subject&order=asc&position=50&limit=25")
+      .get("/api/mailboxes/1/messages?q=needle&field=subject&read=unread&order=asc&position=50&limit=25")
       .set("Cookie", cookie)
       .expect(200);
     expect(response.body).toMatchObject({ total: 3, position: 50 });
     expect(listCalls.at(-1)).toEqual({
       accountId: "account-a",
-      options: { query: "needle", field: "subject", ascending: true, position: 50, limit: 25 },
+      options: { query: "needle", field: "subject", read: "unread", ascending: true, position: 50, limit: 25 },
     });
   });
 

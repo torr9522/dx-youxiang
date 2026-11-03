@@ -65,6 +65,7 @@ describe("mail workspace", () => {
 
     expect(await screen.findByText("482731")).toBeTruthy();
     expect(screen.getByText("notice.txt")).toBeTruthy();
+    expect(screen.getByText("12 B")).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/mailboxes/7/messages/m1/read",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ read: true }) }),
@@ -85,6 +86,9 @@ describe("mail workspace", () => {
     await user.type(messageSearch, "验证码");
     await user.keyboard("{Enter}");
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("q=%E9%AA%8C%E8%AF%81%E7%A0%81"))).toBe(true));
+
+    await user.selectOptions(screen.getByLabelText("阅读状态"), "unread");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("read=unread") && String(url).includes("position=0"))).toBe(true));
   });
 
   it("creates a mailbox through the production API contract", async () => {
@@ -99,6 +103,13 @@ describe("mail workspace", () => {
     await user.click(within(dialog).getByRole("button", { name: "创建邮箱" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/mailboxes" && init?.method === "POST" && init.body === JSON.stringify({ localPart: "created", domainId: 2, note: "" }))).toBe(true));
+  });
+
+  it("opens the message stage when launched for a selected mailbox", async () => {
+    render(<MailWorkspacePage initialMailboxId={7} onManage={() => undefined} />);
+    await screen.findByText(message.subject);
+    expect(screen.getByLabelText("邮件列表").className).toContain("flex");
+    expect(screen.getByLabelText("邮箱列表").className).toContain("hidden");
   });
 });
 

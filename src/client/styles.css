@@ -57,10 +57,11 @@ button:disabled { cursor: not-allowed; }
   display: grid;
   grid-template-columns: minmax(240px, 290px) minmax(340px, 410px) minmax(0, 1fr);
 }
-.mail-html { overflow-wrap: anywhere; line-height: 1.7; color: #334155; }
+.mail-html { max-width: 100%; overflow-wrap: anywhere; line-height: 1.7; color: #334155; }
 .mail-html a { color: var(--color-primary); text-decoration: underline; }
 .mail-html table { max-width: 100% !important; }
 .mail-html img { max-width: 100% !important; height: auto !important; }
+.mail-address-full { overflow-wrap: anywhere; }
 .remote-image-blocked::after { content: "[远程图片已阻止]"; color: var(--color-muted); font-size: 12px; }
 @media (max-width: 980px) and (min-width: 768px) {
   .mail-workspace { grid-template-columns: minmax(220px, 25%) minmax(320px, 37%) minmax(0, 1fr); }
@@ -69,4 +70,12 @@ button:disabled { cursor: not-allowed; }
   .mail-workspace { display: block; }
   .mail-workspace > section,
   .mail-workspace > article { height: 100%; }
+  .app-header { padding-top: env(safe-area-inset-top); padding-left: max(.75rem, env(safe-area-inset-left)); padding-right: max(.75rem, env(safe-area-inset-right)); }
+  .mail-workspace { height: calc(100dvh - 57px - env(safe-area-inset-top)); min-height: 0; }
+  .page-main { padding-right: max(1rem, env(safe-area-inset-right)); padding-bottom: max(1rem, env(safe-area-inset-bottom)); padding-left: max(1rem, env(safe-area-inset-left)); }
+  .modal-backdrop { align-items: start; padding-top: max(1rem, env(safe-area-inset-top)); padding-right: max(1rem, env(safe-area-inset-right)); padding-bottom: max(1rem, env(safe-area-inset-bottom)); padding-left: max(1rem, env(safe-area-inset-left)); }
+  .modal-panel { max-height: calc(100dvh - max(2rem, env(safe-area-inset-top) + env(safe-area-inset-bottom))); }
+  input, select, textarea { font-size: 16px; }
+  .mail-html table { display: block; overflow-x: auto; }
+  .mobile-toast { bottom: max(1.25rem, env(safe-area-inset-bottom)); }
 }
