@@ -11,11 +11,13 @@ function json(data: unknown) {
 
 describe("mobile application navigation", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([]);
       if (url === "/api/domains") return json([]);
+      if (url === "/api/audit") return json([]);
       throw new Error(`Unexpected request: ${url}`);
     }));
   });
@@ -33,11 +35,26 @@ describe("mobile application navigation", () => {
     await user.click(menuButton);
 
     const nav = screen.getByRole("navigation", { name: "手机导航" });
-    for (const label of ["收件箱", "邮箱管理", "域名", "审计", "退出登录"]) {
+    for (const label of ["收件箱", "邮箱管理", "设置", "退出登录"]) {
       expect(within(nav).getByRole("button", { name: label })).toBeTruthy();
     }
-    await user.click(within(nav).getByRole("button", { name: "域名" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "域名设置" })).toBeTruthy());
+    expect(within(nav).queryByRole("button", { name: "域名" })).toBeNull();
+    expect(within(nav).queryByRole("button", { name: "审计" })).toBeNull();
+    await user.click(within(nav).getByRole("button", { name: "设置" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "设置" })).toBeTruthy());
+    expect(screen.getByRole("button", { name: /域名设置/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /审计记录/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /邮件翻译/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "打开导航菜单" }).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps old domain and audit routes compatible", async () => {
+    window.history.replaceState({}, "", "/domains");
+    const { unmount } = render(<App />);
+    expect(await screen.findByRole("heading", { name: "域名设置" })).toBeTruthy();
+    unmount();
+    window.history.replaceState({}, "", "/audit");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "审计记录" })).toBeTruthy();
   });
 });

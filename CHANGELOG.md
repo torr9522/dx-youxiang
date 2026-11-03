@@ -6,6 +6,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Changed
 
+- Simplify the horizontal primary navigation to Inbox, Mailbox Management and Settings, with domain and audit pages retained as compatible Settings subpages
 - Preserve common table-based email structure and allowlisted inline presentation styles without allowing external CSS, active content or application-wide style leakage
 - Render authenticated CID raster images from the owning message and add per-message consent for privacy-safe remote image loading
 - Proxy consented remote images through DNS-pinned public destinations with redirect, timeout, size, MIME and file-signature validation
