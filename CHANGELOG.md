@@ -4,6 +4,13 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+### Added
+
+- Add an administrator-only translation settings page with empty provider defaults, encrypted API key storage, explicit connection testing and cache management
+- Add independent OpenAI-compatible Responses and Chat Completions adapters with HTTPS-only SSRF controls, bounded requests and disabled response storage
+- Detect message-body language and translate sanitized HTML text nodes in place while preserving layout, protected identifiers, images and the original/translation switch
+- Cache complete translations by mailbox account, message body, provider, protocol, model, target language and prompt version without storing API keys in cache keys
+
 ### Changed
 
 - Simplify the horizontal primary navigation to Inbox, Mailbox Management and Settings, with domain and audit pages retained as compatible Settings subpages

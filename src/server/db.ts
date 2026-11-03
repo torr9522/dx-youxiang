@@ -79,6 +79,36 @@ export class AppDatabase {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS audit_created ON audit_log(created_at DESC);
+      CREATE TABLE IF NOT EXISTS translation_settings (
+        id INTEGER PRIMARY KEY CHECK(id=1),
+        protocol TEXT CHECK(protocol IN ('responses','chat_completions') OR protocol IS NULL),
+        base_url TEXT NOT NULL DEFAULT '',
+        api_key_ciphertext TEXT,
+        model TEXT NOT NULL DEFAULT '',
+        target_language TEXT NOT NULL DEFAULT 'zh-CN',
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+        tested_config_hash TEXT,
+        connection_tested_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT OR IGNORE INTO translation_settings(id) VALUES(1);
+      CREATE TABLE IF NOT EXISTS translation_cache (
+        id INTEGER PRIMARY KEY,
+        mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+        stalwart_account_id TEXT NOT NULL,
+        email_id TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        provider_hash TEXT NOT NULL,
+        protocol TEXT NOT NULL CHECK(protocol IN ('responses','chat_completions')),
+        model TEXT NOT NULL,
+        target_language TEXT NOT NULL,
+        prompt_version TEXT NOT NULL,
+        translated_html TEXT NOT NULL DEFAULT '',
+        translated_plain TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(mailbox_id,stalwart_account_id,email_id,content_hash,provider_hash,protocol,model,target_language,prompt_version)
+      );
+      CREATE INDEX IF NOT EXISTS translation_cache_message ON translation_cache(mailbox_id,email_id);
     `);
   }
 

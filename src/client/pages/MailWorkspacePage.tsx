@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, ImageIcon, Inbox, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, ImageIcon, Inbox, Languages, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import { api, type Domain, type Mailbox, type MessageDetail, type MessageSummary } from "../api";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
 import { copyText } from "../lib/clipboard";
@@ -14,7 +14,9 @@ function messagesPath(mailboxId: number, position: number, query: string, field:
   return `/api/mailboxes/${mailboxId}/messages?${params}`;
 }
 
-export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailboxId?: number; onManage: () => void }) {
+type TranslatedMessage = { html: string; plain: string; cached: boolean; partial: boolean };
+
+export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { initialMailboxId?: number; onManage: () => void; onSettings?: () => void }) {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [mailboxSearch, setMailboxSearch] = useState("");
@@ -32,6 +34,9 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
   const [detailLoading, setDetailLoading] = useState(false);
   const [showRemoteImages, setShowRemoteImages] = useState(false);
   const [remoteImageStatus, setRemoteImageStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [translatedMessage, setTranslatedMessage] = useState<TranslatedMessage | null>(null);
+  const [translationMode, setTranslationMode] = useState<"original" | "translated">("original");
+  const [translationLoading, setTranslationLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const requestId = useRef(0);
@@ -40,6 +45,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
   const messageScrollTop = useRef(0);
 
   const selectedMailbox = mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
+  const displayHtml = translationMode === "translated" && translatedMessage ? translatedMessage.html : selectedMessage?.html ?? "";
+  const displayPlain = translationMode === "translated" && translatedMessage ? translatedMessage.plain : selectedMessage?.plain ?? "";
 
   const showToast = (message: string) => {
     setToast(message);
@@ -56,6 +63,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
       setTotal(page.total);
       setPosition(page.position);
       setSelectedMessage(null);
+      setTranslatedMessage(null);
+      setTranslationMode("original");
     } catch (caught) {
       if (currentRequest === requestId.current) setError((caught as Error).message);
     }
@@ -103,6 +112,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     setSearchField("text");
     setReadFilter("all");
     setSelectedMessage(null);
+    setTranslatedMessage(null);
+    setTranslationMode("original");
     setMobileStage("messages");
     await loadMessages(mailbox.id, 0, "", "text", "all", "desc");
   };
@@ -112,6 +123,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     setDetailLoading(true);
     setShowRemoteImages(false);
     setRemoteImageStatus("idle");
+    setTranslatedMessage(null);
+    setTranslationMode("original");
     setError("");
     try {
       const detail = await api<MessageDetail>(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(message.id)}`);
@@ -136,7 +149,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
 
   useEffect(() => {
     const container = mailBodyRef.current;
-    if (!container || !selectedMessage?.html) return;
+    if (!container || !displayHtml) return;
     const fitOversizedTables = () => {
       for (const table of container.querySelectorAll<HTMLTableElement>("table:not([data-mail-responsive])")) {
         if (table.getBoundingClientRect().width > container.clientWidth) table.dataset.mailResponsive = "true";
@@ -147,11 +160,11 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     const observer = new ResizeObserver(fitOversizedTables);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [selectedMessage?.id, selectedMessage?.html]);
+  }, [selectedMessage?.id, displayHtml]);
 
   useEffect(() => {
     const container = mailBodyRef.current;
-    if (!container || !selectedMessage?.html) return;
+    if (!container || !displayHtml) return;
     const images = Array.from(container.querySelectorAll<HTMLImageElement>("img[data-remote-src]"));
     if (!showRemoteImages) {
       for (const image of images) {
@@ -184,7 +197,20 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
         image.removeEventListener("error", failed);
       }
     };
-  }, [selectedMessage?.id, selectedMessage?.html, showRemoteImages]);
+  }, [selectedMessage?.id, displayHtml, showRemoteImages]);
+
+  const translateCurrentMessage = async () => {
+    if (!selectedMailboxId || !selectedMessage) return;
+    if (translatedMessage) { setTranslationMode("translated"); return; }
+    setTranslationLoading(true);
+    setError("");
+    try {
+      const translated = await api<TranslatedMessage>(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(selectedMessage.id)}/translate`, { method: "POST", body: "{}" });
+      setTranslatedMessage(translated);
+      setTranslationMode("translated");
+    } catch (caught) { setError((caught as Error).message); }
+    finally { setTranslationLoading(false); }
+  };
 
   const markRead = async (read: boolean) => {
     if (!selectedMailboxId || !selectedMessage) return;
@@ -207,6 +233,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     if (!selectedMailboxId || !selectedMessage || !window.confirm("确认永久删除这封邮件？")) return;
     await api(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(selectedMessage.id)}`, { method: "DELETE" });
     setSelectedMessage(null);
+    setTranslatedMessage(null);
+    setTranslationMode("original");
     setMobileStage("messages");
     await loadMessages(selectedMailboxId, position);
   };
@@ -298,7 +326,16 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
             <span className="min-w-0 flex-1">{remoteImageStatus === "loading" ? "正在安全加载远程图片..." : remoteImageStatus === "error" ? "部分图片无法安全加载。" : showRemoteImages ? "已显示本封邮件的远程图片。" : "检测到远程图片。为保护隐私，图片尚未加载。"}</span>
             <button type="button" onClick={() => { const next = !showRemoteImages; setRemoteImageStatus(next ? "loading" : "idle"); setShowRemoteImages(next); }} className="focus-ring shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100">{showRemoteImages ? "隐藏远程图片" : "显示本封邮件的图片"}</button>
           </div>}
-          {selectedMessage.html ? <div ref={mailBodyRef} className="mail-html" dangerouslySetInnerHTML={{ __html: selectedMessage.html }} /> : <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-700">{selectedMessage.plain || "（邮件正文为空）"}</pre>}
+          {selectedMessage.translation.translatable && <div className="mb-4 flex min-w-0 flex-wrap items-center gap-2.5 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-xs text-blue-950">
+            <Languages size={16} className="shrink-0 text-blue-600" />
+            <span className="min-w-0 flex-1">{translationMode === "translated" ? translatedMessage?.partial ? "部分内容翻译失败，未翻译部分保留原文。" : translatedMessage?.cached ? "正在显示缓存译文。" : "正在显示译文。" : `检测到${selectedMessage.translation.label}。`}</span>
+            {translationMode === "translated"
+              ? <button type="button" onClick={() => setTranslationMode("original")} className="focus-ring shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100">查看原文</button>
+              : selectedMessage.translation.enabled
+                ? <button type="button" disabled={translationLoading} onClick={() => void translateCurrentMessage()} className="focus-ring shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50">{translationLoading ? "正在翻译..." : translatedMessage ? "查看译文" : "翻译正文"}</button>
+                : <button type="button" onClick={onSettings} disabled={!onSettings} className="focus-ring shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">前往设置</button>}
+          </div>}
+          {displayHtml ? <div ref={mailBodyRef} className="mail-html" dangerouslySetInnerHTML={{ __html: displayHtml }} /> : <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-700">{displayPlain || "（邮件正文为空）"}</pre>}
           {!!selectedMessage.attachments?.length && <section className="mt-8 border-t border-slate-200 pt-4"><h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-800"><Paperclip size={16} />附件 ({selectedMessage.attachments.length})</h3><div className="grid gap-2 sm:grid-cols-2">{selectedMessage.attachments.map((attachment) => <a key={attachment.blobId} href={`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(selectedMessage.id)}/attachments/${encodeURIComponent(attachment.blobId)}`} className="focus-ring flex min-h-12 min-w-0 items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50"><FileText size={18} className="shrink-0 text-blue-600" /><span className="min-w-0 flex-1"><span className="block truncate">{attachment.name || "附件"}</span>{typeof attachment.size === "number" && <span className="mt-0.5 block text-xs text-slate-400">{formatBytes(attachment.size)}</span>}</span><Download size={16} className="shrink-0 text-slate-400" /></a>)}</div></section>}
         </div>
       </>}

@@ -1,6 +1,7 @@
 import { ArrowLeft, FileClock, Globe2, Languages, Settings } from "lucide-react";
 import { AuditPage } from "./AuditPage";
 import { SettingsPage as DomainSettingsPage } from "./SettingsPage";
+import { TranslationSettingsPage } from "./TranslationSettingsPage";
 
 export type SettingsSection = "home" | "domains" | "audit" | "translation";
 
@@ -38,16 +39,6 @@ export function SettingsCenterPage({ section, onSection }: Props) {
     <button type="button" onClick={() => onSection("home")} className="focus-ring mb-4 inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-blue-700"><ArrowLeft size={16} />返回设置</button>
     {section === "domains" && <DomainSettingsPage />}
     {section === "audit" && <AuditPage />}
-    {section === "translation" && <TranslationSettingsPlaceholder />}
-  </div>;
-}
-
-function TranslationSettingsPlaceholder() {
-  return <div>
-    <div className="mb-5">
-      <h1 className="text-2xl font-semibold text-slate-900">邮件翻译</h1>
-      <p className="mt-1 text-sm text-slate-500">翻译服务未配置时不会发送邮件内容，也不会产生第三方 API 费用。</p>
-    </div>
-    <div className="surface-panel p-5 text-sm leading-6 text-slate-600">请配置翻译服务后再启用邮件翻译。</div>
+    {section === "translation" && <TranslationSettingsPage />}
   </div>;
 }

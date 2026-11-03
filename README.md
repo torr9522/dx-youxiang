@@ -11,6 +11,7 @@ Latest stable version: `v0.1.2`.
 - Per-mailbox IMAP switch and independent password
 - JMAP access scoped server-side to the selected mailbox account ID
 - Sanitized HTML mail, blocked remote images and safe attachment downloads
+- Optional click-to-translate message bodies with preserved HTML layout, encrypted provider settings and server-side caching
 - No compose, reply, forward, submission or outbound SMTP feature
 - SQLite WAL application database and Stalwart RocksDB mail storage
 - Systemd services, health checks, encrypted Restic backups and migration documentation

@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import { createHash } from "node:crypto";
 import { sealRemoteImage } from "./remote-images.js";
 
 const emailTags = [
@@ -96,5 +97,6 @@ export function presentMessage(message: any, context?: PresentationContext) {
   const html = rawHtml ? sanitizeEmailHtml(rawHtml, message, context) : "";
   const codeSource = `${message.subject ?? ""}\n${plain || sanitizeHtml(rawHtml, { allowedTags: [] })}`;
   const code = /(?:验证码|校验码|verification\s*code|security\s*code|one[- ]time\s*(?:code|password)|\bOTP\b)[^0-9]{0,24}([0-9]{4,8})/i.exec(codeSource)?.[1] ?? null;
-  return { ...message, plain, html, blockedRemoteImages, verificationCode: code, bodyValues: undefined, bodyStructure: undefined };
+  const bodyHash = createHash("sha256").update(JSON.stringify({ plain, rawHtml })).digest("hex");
+  return { ...message, plain, html, bodyHash, blockedRemoteImages, verificationCode: code, bodyValues: undefined, bodyStructure: undefined };
 }

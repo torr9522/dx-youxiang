@@ -556,6 +556,50 @@
     },
     {
       "type": "library",
+      "name": "collapse-white-space",
+      "version": "2.1.0",
+      "bom-ref": "dx-youxiang@0.1.2|collapse-white-space@2.1.0",
+      "author": "Titus Wormer",
+      "description": "Collapse white space",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/collapse-white-space@2.1.0",
+      "externalReferences": [
+        {
+          "url": "https://registry.npmjs.org/collapse-white-space/-/collapse-white-space-2.1.0.tgz",
+          "type": "distribution",
+          "comment": "as detected from npm-ls property \"resolved\""
+        },
+        {
+          "url": "https://github.com/wooorm/collapse-white-space/issues",
+          "type": "issue-tracker",
+          "comment": "as detected from PackageJson property \"bugs.url\""
+        },
+        {
+          "url": "git+https://github.com/wooorm/collapse-white-space.git",
+          "type": "vcs",
+          "comment": "as detected from PackageJson property \"repository.url\""
+        },
+        {
+          "url": "https://github.com/wooorm/collapse-white-space#readme",
+          "type": "website",
+          "comment": "as detected from PackageJson property \"homepage\""
+        }
+      ],
+      "properties": [
+        {
+          "name": "cdx:npm:package:path",
+          "value": "node_modules/collapse-white-space"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "content-disposition",
       "version": "2.0.1",
       "bom-ref": "dx-youxiang@0.1.2|content-disposition@2.0.1",
@@ -1974,6 +2018,50 @@
     },
     {
       "type": "library",
+      "name": "franc-min",
+      "version": "6.2.0",
+      "bom-ref": "dx-youxiang@0.1.2|franc-min@6.2.0",
+      "author": "Titus Wormer",
+      "description": "Detect the language of text",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/franc-min@6.2.0",
+      "externalReferences": [
+        {
+          "url": "https://registry.npmjs.org/franc-min/-/franc-min-6.2.0.tgz",
+          "type": "distribution",
+          "comment": "as detected from npm-ls property \"resolved\""
+        },
+        {
+          "url": "https://github.com/wooorm/franc/issues",
+          "type": "issue-tracker",
+          "comment": "as detected from PackageJson property \"bugs.url\""
+        },
+        {
+          "url": "git+https://github.com/wooorm/franc.git#main",
+          "type": "vcs",
+          "comment": "as detected from PackageJson property \"repository.url\""
+        },
+        {
+          "url": "https://github.com/wooorm/franc/tree/main#readme",
+          "type": "website",
+          "comment": "as detected from PackageJson property \"homepage\""
+        }
+      ],
+      "properties": [
+        {
+          "name": "cdx:npm:package:path",
+          "value": "node_modules/franc-min"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "fresh",
       "version": "2.0.0",
       "bom-ref": "dx-youxiang@0.1.2|fresh@2.0.0",
@@ -3141,6 +3229,50 @@
     },
     {
       "type": "library",
+      "name": "n-gram",
+      "version": "2.0.2",
+      "bom-ref": "dx-youxiang@0.1.2|n-gram@2.0.2",
+      "author": "Titus Wormer",
+      "description": "Get n-grams from text",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/n-gram@2.0.2",
+      "externalReferences": [
+        {
+          "url": "https://registry.npmjs.org/n-gram/-/n-gram-2.0.2.tgz",
+          "type": "distribution",
+          "comment": "as detected from npm-ls property \"resolved\""
+        },
+        {
+          "url": "https://github.com/words/n-gram/issues",
+          "type": "issue-tracker",
+          "comment": "as detected from PackageJson property \"bugs.url\""
+        },
+        {
+          "url": "git+https://github.com/words/n-gram.git",
+          "type": "vcs",
+          "comment": "as detected from PackageJson property \"repository.url\""
+        },
+        {
+          "url": "https://github.com/words/n-gram#readme",
+          "type": "website",
+          "comment": "as detected from PackageJson property \"homepage\""
+        }
+      ],
+      "properties": [
+        {
+          "name": "cdx:npm:package:path",
+          "value": "node_modules/n-gram"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "nanoid",
       "version": "3.3.20",
       "bom-ref": "dx-youxiang@0.1.2|nanoid@3.3.20",
@@ -3505,6 +3637,100 @@
         {
           "name": "cdx:npm:package:path",
           "value": "node_modules/parse-srcset"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "parse5",
+      "version": "8.1.0",
+      "bom-ref": "dx-youxiang@0.1.2|parse5@8.1.0",
+      "author": "Ivan Nikulin",
+      "description": "HTML parser and serializer.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/parse5@8.1.0",
+      "externalReferences": [
+        {
+          "url": "https://registry.npmjs.org/parse5/-/parse5-8.1.0.tgz",
+          "type": "distribution",
+          "comment": "as detected from npm-ls property \"resolved\""
+        },
+        {
+          "url": "https://github.com/inikulin/parse5/issues",
+          "type": "issue-tracker",
+          "comment": "as detected from PackageJson property \"bugs.url\""
+        },
+        {
+          "url": "git://github.com/inikulin/parse5.git",
+          "type": "vcs",
+          "comment": "as detected from PackageJson property \"repository.url\""
+        },
+        {
+          "url": "https://parse5.js.org",
+          "type": "website",
+          "comment": "as detected from PackageJson property \"homepage\""
+        }
+      ],
+      "properties": [
+        {
+          "name": "cdx:npm:package:path",
+          "value": "node_modules/parse5"
+        }
+      ],
+      "components": [
+        {
+          "type": "library",
+          "name": "entities",
+          "version": "9.0.0",
+          "bom-ref": "dx-youxiang@0.1.2|parse5@8.1.0|entities@9.0.0",
+          "author": "Felix Boehm",
+          "description": "Encode & decode XML and HTML entities with ease & speed",
+          "licenses": [
+            {
+              "license": {
+                "id": "BSD-2-Clause"
+              }
+            }
+          ],
+          "purl": "pkg:npm/entities@9.0.0",
+          "externalReferences": [
+            {
+              "url": "https://registry.npmjs.org/entities/-/entities-9.0.0.tgz",
+              "type": "distribution",
+              "comment": "as detected from npm-ls property \"resolved\""
+            },
+            {
+              "url": "https://github.com/fb55/entities/issues",
+              "type": "issue-tracker",
+              "comment": "as detected from PackageJson property \"bugs.url\""
+            },
+            {
+              "url": "git+https://github.com/fb55/entities.git",
+              "type": "vcs",
+              "comment": "as detected from PackageJson property \"repository.url\""
+            },
+            {
+              "url": "https://github.com/fb55/entities#readme",
+              "type": "website",
+              "comment": "as detected from PackageJson property \"homepage\""
+            }
+          ],
+          "properties": [
+            {
+              "name": "cdx:npm:package:constraint:engine:node",
+              "value": ">=20.19.0"
+            },
+            {
+              "name": "cdx:npm:package:path",
+              "value": "node_modules/parse5/node_modules/entities"
+            }
+          ]
         }
       ]
     },
@@ -4775,6 +5001,50 @@
     },
     {
       "type": "library",
+      "name": "trigram-utils",
+      "version": "2.0.1",
+      "bom-ref": "dx-youxiang@0.1.2|trigram-utils@2.0.1",
+      "author": "Titus Wormer",
+      "description": "A few language trigram utilities",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/trigram-utils@2.0.1",
+      "externalReferences": [
+        {
+          "url": "https://registry.npmjs.org/trigram-utils/-/trigram-utils-2.0.1.tgz",
+          "type": "distribution",
+          "comment": "as detected from npm-ls property \"resolved\""
+        },
+        {
+          "url": "https://github.com/wooorm/trigram-utils/issues",
+          "type": "issue-tracker",
+          "comment": "as detected from PackageJson property \"bugs.url\""
+        },
+        {
+          "url": "git+https://github.com/wooorm/trigram-utils.git",
+          "type": "vcs",
+          "comment": "as detected from PackageJson property \"repository.url\""
+        },
+        {
+          "url": "https://github.com/wooorm/trigram-utils#readme",
+          "type": "website",
+          "comment": "as detected from PackageJson property \"homepage\""
+        }
+      ],
+      "properties": [
+        {
+          "name": "cdx:npm:package:path",
+          "value": "node_modules/trigram-utils"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "type-is",
       "version": "2.1.0",
       "bom-ref": "dx-youxiang@0.1.2|type-is@2.1.0",
@@ -5189,8 +5459,10 @@
         "dx-youxiang@0.1.2|cookie-parser@1.4.7",
         "dx-youxiang@0.1.2|express-rate-limit@8.7.2",
         "dx-youxiang@0.1.2|express@5.3.0",
+        "dx-youxiang@0.1.2|franc-min@6.2.0",
         "dx-youxiang@0.1.2|helmet@8.3.0",
         "dx-youxiang@0.1.2|lucide-react@1.66.0",
+        "dx-youxiang@0.1.2|parse5@8.1.0",
         "dx-youxiang@0.1.2|react-dom@19.3.1",
         "dx-youxiang@0.1.2|react@19.3.1",
         "dx-youxiang@0.1.2|sanitize-html@2.18.1",
@@ -5260,6 +5532,10 @@
         "dx-youxiang@0.1.2|call-bind-apply-helpers@1.0.2",
         "dx-youxiang@0.1.2|get-intrinsic@1.3.0"
       ]
+    },
+    {
+      "ref": "dx-youxiang@0.1.2|collapse-white-space@2.1.0",
+      "dependsOn": []
     },
     {
       "ref": "dx-youxiang@0.1.2|content-disposition@2.0.1",
@@ -5450,6 +5726,12 @@
       "dependsOn": []
     },
     {
+      "ref": "dx-youxiang@0.1.2|franc-min@6.2.0",
+      "dependsOn": [
+        "dx-youxiang@0.1.2|trigram-utils@2.0.1"
+      ]
+    },
+    {
       "ref": "dx-youxiang@0.1.2|fresh@2.0.0",
       "dependsOn": []
     },
@@ -5586,6 +5868,10 @@
       "dependsOn": []
     },
     {
+      "ref": "dx-youxiang@0.1.2|n-gram@2.0.2",
+      "dependsOn": []
+    },
+    {
       "ref": "dx-youxiang@0.1.2|nanoid@3.3.20",
       "dependsOn": []
     },
@@ -5621,6 +5907,16 @@
     },
     {
       "ref": "dx-youxiang@0.1.2|parse-srcset@1.0.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "dx-youxiang@0.1.2|parse5@8.1.0",
+      "dependsOn": [
+        "dx-youxiang@0.1.2|parse5@8.1.0|entities@9.0.0"
+      ]
+    },
+    {
+      "ref": "dx-youxiang@0.1.2|parse5@8.1.0|entities@9.0.0",
       "dependsOn": []
     },
     {
@@ -5800,6 +6096,13 @@
     {
       "ref": "dx-youxiang@0.1.2|toidentifier@1.0.1",
       "dependsOn": []
+    },
+    {
+      "ref": "dx-youxiang@0.1.2|trigram-utils@2.0.1",
+      "dependsOn": [
+        "dx-youxiang@0.1.2|collapse-white-space@2.1.0",
+        "dx-youxiang@0.1.2|n-gram@2.0.2"
+      ]
     },
     {
       "ref": "dx-youxiang@0.1.2|type-is@2.1.0",

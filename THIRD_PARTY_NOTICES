@@ -10,6 +10,7 @@ CycloneDX. Major direct dependencies include:
 - Zod: MIT
 - node-argon2: MIT
 - sanitize-html: MIT
+- parse5 and franc-min: MIT
 - Lucide: ISC
 
 Build and test dependencies (Vite, TypeScript, Tailwind CSS, Vitest and ESLint)

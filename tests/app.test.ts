@@ -17,6 +17,7 @@ const externalLoginCalls: { accountId: string; enabled: boolean; password?: stri
 const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[] = [];
 const createMailboxCalls: { localPart: string; domainId: string; description: string }[] = [];
 const deleteMailboxCalls: string[] = [];
+const translationCalls: Array<{ protocol: string; input: string }> = [];
 let createdAccountSequence = 0;
 const inlinePng = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 
@@ -57,8 +58,10 @@ const fake = {
   session: async () => ({}),
   getMessage: async (accountId: string, emailId: string) => accountId === "account-a" && emailId === "email-a" ? {
     id: "email-a", subject: "A only", textBody: [], htmlBody: [{ partId: "html" }],
-    bodyValues: { html: { value: '<img src="cid:logo@example.test"><img src="https://remote.example.test/pixel.png?secret=value">' } },
+    bodyValues: { html: { value: '<table><tbody><tr><td>Your verification code is 482731. Visit https://example.test to continue.</td></tr></tbody></table><img src="cid:logo@example.test"><img src="https://remote.example.test/pixel.png?secret=value">' } },
     attachments: [{ blobId: "inline-blob", cid: "<logo@example.test>", type: "image/png", size: inlinePng.length }],
+  } : accountId === "account-b" && emailId === "email-b" ? {
+    id: "email-b", subject: "B only", textBody: [{ partId: "text" }], htmlBody: [], bodyValues: { text: { value: "A separate English message for deletion testing." } }, attachments: [],
   } : null,
   listMessages: async (accountId: string, options: Record<string, unknown>) => {
     listCalls.push({ accountId, options });
@@ -90,6 +93,18 @@ const fake = {
   download: async () => new Response(inlinePng, { headers: { "content-type": "image/png" } }),
 } as any;
 
+const fakeTranslationProvider = {
+  complete: async (config: { protocol: string }, _instructions: string, input: string) => {
+    translationCalls.push({ protocol: config.protocol, input });
+    if (input.startsWith("Connectivity test")) return "DX_TRANSLATION_OK";
+    const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
+    return JSON.stringify({ translations: parsed.nodes.map((node) => ({
+      id: node.id,
+      text: node.text.replace("Your verification code is", "您的验证码是").replace("Visit", "访问").replace("to continue", "以继续"),
+    })) });
+  },
+};
+
 beforeAll(async () => {
   const config = {
     NODE_ENV: "test", HOST: "127.0.0.1", PORT: 3000,
@@ -101,7 +116,7 @@ beforeAll(async () => {
   const db = new AppDatabase(config.DATABASE_PATH);
   db.db.prepare("INSERT INTO domains(stalwart_domain_id,name,is_default) VALUES('domain-a','example.test',1)").run();
   db.db.prepare("INSERT INTO mailboxes(stalwart_account_id,address,local_part,domain_id) VALUES('account-a','a@example.test','a',1),('account-b','b@example.test','b',1)").run();
-  context = createApp(config, { db, stalwart: fake });
+  context = createApp(config, { db, stalwart: fake, translationProvider: fakeTranslationProvider });
   const login = await request(context.app).post("/api/auth/login").send({ username: "admin", password: "Correct-Horse-99!" });
   csrf = login.body.csrfToken;
   cookie = login.headers["set-cookie"][0].split(";")[0];
@@ -131,6 +146,64 @@ describe("API access control", () => {
 
   it("requires CSRF on state changes", async () => {
     await request(context.app).post("/api/auth/logout").set("Cookie", cookie).expect(403);
+  });
+
+  it("keeps fresh translation settings empty and never returns API key material", async () => {
+    const fresh = await request(context.app).get("/api/settings/translation").set("Cookie", cookie).expect(200);
+    expect(fresh.body).toMatchObject({ protocol: null, baseUrl: "", hasApiKey: false, model: "", targetLanguage: "zh-CN", enabled: false, configured: false, tested: false, cacheEntries: 0 });
+    expect(JSON.stringify(fresh.body)).not.toContain("apiKey");
+
+    const saved = await request(context.app).put("/api/settings/translation")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ protocol: "responses", baseUrl: "https://api.example.test/v1/", apiKey: "fictional-test-provider-key", model: "translation-test-model", targetLanguage: "zh-CN", enabled: true })
+      .expect(200);
+    expect(saved.body).toMatchObject({ protocol: "responses", hasApiKey: true, configured: true, tested: false, enabled: false });
+    expect(JSON.stringify(saved.body)).not.toContain("fictional-test-provider-key");
+    const stored = context.db.db.prepare("SELECT api_key_ciphertext FROM translation_settings WHERE id=1").get() as { api_key_ciphertext: string };
+    expect(stored.api_key_ciphertext).not.toContain("fictional-test-provider-key");
+  });
+
+  it("requires a real connection test before enabling translation", async () => {
+    const tested = await request(context.app).post("/api/settings/translation/test")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({}).expect(200);
+    expect(tested.body).toMatchObject({ tested: true, enabled: false });
+    expect(translationCalls.at(-1)?.protocol).toBe("responses");
+
+    const enabled = await request(context.app).put("/api/settings/translation")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ protocol: "responses", baseUrl: "https://api.example.test/v1/", model: "translation-test-model", targetLanguage: "zh-CN", enabled: true })
+      .expect(200);
+    expect(enabled.body).toMatchObject({ tested: true, enabled: true });
+  });
+
+  it("translates owned HTML text nodes, protects identifiers and reuses the server cache", async () => {
+    const detail = await request(context.app).get("/api/mailboxes/1/messages/email-a").set("Cookie", cookie).expect(200);
+    expect(detail.body.translation).toMatchObject({ label: "英文", translatable: true, configured: true, enabled: true });
+    const before = translationCalls.length;
+    const translated = await request(context.app).post("/api/mailboxes/1/messages/email-a/translate")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({}).expect(200);
+    expect(translated.body).toMatchObject({ cached: false, partial: false });
+    expect(translated.body.html).toContain("<table>");
+    expect(translated.body.html).toContain("482731");
+    expect(translated.body.html).toContain("https://example.test");
+    expect(translated.body.html).toContain("data-remote-src=");
+    expect(translated.body.html).not.toContain("remote.example.test");
+    const cached = await request(context.app).post("/api/mailboxes/1/messages/email-a/translate")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({}).expect(200);
+    expect(cached.body).toMatchObject({ cached: true, partial: false, html: translated.body.html });
+    expect(translationCalls).toHaveLength(before + 1);
+    await request(context.app).post("/api/mailboxes/2/messages/email-a/translate")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({}).expect(404);
+    expect(context.db.db.prepare("SELECT stalwart_account_id,email_id FROM translation_cache WHERE mailbox_id=1").get()).toEqual({ stalwart_account_id: "account-a", email_id: "email-a" });
+  });
+
+  it("cleans a message translation cache only after deleting the owning message", async () => {
+    await request(context.app).post("/api/mailboxes/2/messages/email-b/translate")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({}).expect(200);
+    expect(context.db.db.prepare("SELECT COUNT(*) count FROM translation_cache WHERE mailbox_id=2 AND email_id='email-b'").get()).toEqual({ count: 1 });
+    await request(context.app).delete("/api/mailboxes/2/messages/email-b")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).expect(204);
+    expect(context.db.db.prepare("SELECT COUNT(*) count FROM translation_cache WHERE mailbox_id=2 AND email_id='email-b'").get()).toEqual({ count: 0 });
   });
 
   it("derives the Stalwart account id from the selected mailbox", async () => {
@@ -276,6 +349,7 @@ describe("API access control", () => {
     ]);
     expect(deleteMailboxCalls.slice(before)).toEqual(["account-a", "account-b", "created-account-1"]);
     expect(context.db.db.prepare("SELECT id FROM mailboxes WHERE id=1").get()).toBeUndefined();
+    expect(context.db.db.prepare("SELECT COUNT(*) count FROM translation_cache WHERE mailbox_id=1").get()).toEqual({ count: 0 });
     expect(context.db.db.prepare("SELECT status FROM mailboxes WHERE id=2").get()).toEqual({ status: "error" });
     expect(context.db.db.prepare("SELECT id FROM mailboxes WHERE id=3").get()).toBeUndefined();
   });

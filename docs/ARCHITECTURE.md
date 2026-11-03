@@ -38,6 +38,8 @@ Stalwart uses its recommended single-node RocksDB store with the default blob an
 - `src/server/security.ts`: administrator session, CSRF, cookies, audit records.
 - `src/server/mail.ts`: body presentation, HTML sanitization, verification-code extraction.
 - `src/server/remote-images.ts`: message-bound image tokens, SSRF controls and raster validation.
+- `src/server/translation-provider.ts`: HTTPS-only, DNS-validated Responses and Chat Completions protocol adapters.
+- `src/server/translation.ts`: encrypted translation settings, language detection, text-node mapping and account-bound cache policy.
 - `scripts/bootstrap-stalwart.mjs`: one-time service identity, listeners, TLS and permission configuration.
 - `scripts/*.sh` and `deploy`: native lifecycle, systemd, Caddy, Certbot, nftables and backup assets.
 
@@ -54,3 +56,7 @@ Internet MTA
 ```
 
 No step contains a submission or relay route. New outbound TCP 25/465/587 connections are rejected at the host firewall.
+
+## Optional translation flow
+
+Translation is disabled and unconfigured on a new installation. After an administrator explicitly configures and tests a provider, a user action on one message extracts text nodes from the already-sanitized presentation, protects identifiers, sends bounded JSON text batches to the selected protocol adapter, validates the returned node map and writes text values back into the same safe DOM structure. Images, URLs, attributes and raw MIME data are not sent or rewritten. Complete translations are cached in SQLite; incomplete results are shown with a warning and are not cached.

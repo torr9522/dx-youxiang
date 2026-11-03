@@ -40,7 +40,8 @@ describe("mail workspace", () => {
     if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([mailbox]);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
     if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return json({ list: [message], total: 1, position: 0 });
-    if (url === "/api/mailboxes/7/messages/m1" && (!init?.method || init.method === "GET")) return json({ ...message, plain: "Your code is 482731", html: '<p>Your code is 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', blockedRemoteImages: true, verificationCode: "482731", attachments: [{ blobId: "b1", name: "notice.txt", size: 12 }] });
+    if (url === "/api/mailboxes/7/messages/m1" && (!init?.method || init.method === "GET")) return json({ ...message, plain: "Your code is 482731", html: '<p>Your code is 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', blockedRemoteImages: true, verificationCode: "482731", attachments: [{ blobId: "b1", name: "notice.txt", size: 12 }], translation: { language: "eng", label: "英文", translatable: true, configured: true, enabled: true, targetLanguage: "zh-CN" } });
+    if (url === "/api/mailboxes/7/messages/m1/translate" && init?.method === "POST") return json({ html: '<p>您的验证码是 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', plain: "", cached: false, partial: false });
     if (url === "/api/mailboxes/7/messages/m1/read" && init?.method === "PATCH") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes" && init?.method === "POST") return json({ id: 8, address: "created@example.test", external_login: 0 }, 201);
     throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
@@ -123,6 +124,20 @@ describe("mail workspace", () => {
     await waitFor(() => expect(image.getAttribute("src")).toBe("/api/proxy/image-token"));
     await user.click(screen.getByRole("button", { name: "隐藏远程图片" }));
     await waitFor(() => expect(image.hasAttribute("src")).toBe(false));
+  });
+
+  it("translates in place and switches back without a second API request", async () => {
+    const user = userEvent.setup();
+    render(<MailWorkspacePage onManage={() => undefined} />);
+    await user.click(await screen.findByText(message.subject));
+    expect(await screen.findByText("Your code is 482731")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "翻译正文" }));
+    expect(await screen.findByText("您的验证码是 482731")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "查看原文" }));
+    expect(await screen.findByText("Your code is 482731")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "查看译文" }));
+    expect(await screen.findByText("您的验证码是 482731")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/mailboxes/7/messages/m1/translate")).toHaveLength(1);
   });
 });
 

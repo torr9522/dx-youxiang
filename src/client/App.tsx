@@ -79,7 +79,7 @@ export function App() {
       {mobileMenuOpen && <div className="absolute inset-x-0 top-full border-b border-slate-200 bg-white p-2 shadow-sm md:hidden"><nav aria-label="手机导航" className="grid gap-1">{nav.map((item) => <button key={item.name} onClick={() => { navigate(item.name); setMobileMenuOpen(false); }} className={`focus-ring flex min-h-11 items-center gap-3 rounded-md px-3 text-sm ${view === item.name ? "bg-blue-50 font-medium text-blue-700" : "text-slate-700 hover:bg-slate-50"}`}><item.icon size={18} /><span>{item.label}</span></button>)}<button onClick={async () => { await api("/api/auth/logout", { method: "POST" }); setCsrf(""); setStatus("guest"); }} className="focus-ring flex min-h-11 items-center gap-3 rounded-md px-3 text-sm text-slate-700 hover:bg-slate-50"><LogOut size={18} />退出登录</button></nav></div>}
     </header>
 
-    {view === "mail" && <MailWorkspacePage key={targetMailbox ?? "default"} initialMailboxId={targetMailbox} onManage={() => navigate("mailboxes")} />}
+    {view === "mail" && <MailWorkspacePage key={targetMailbox ?? "default"} initialMailboxId={targetMailbox} onManage={() => navigate("mailboxes")} onSettings={() => navigate("settings", "translation")} />}
     {view !== "mail" && <main className="page-main mx-auto max-w-[1420px] p-4 sm:p-6 lg:p-8">
       {view === "mailboxes" && <MailboxesPage onMailbox={(id) => { setTargetMailbox(id); navigate("mail"); }} />}
       {view === "settings" && <SettingsCenterPage section={settingsSection} onSection={(section) => navigate("settings", section)} />}

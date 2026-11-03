@@ -13,6 +13,8 @@ import { AuthService, audit } from "./security.js";
 import { presentMessage, remoteImageUrls } from "./mail.js";
 import { fetchRemoteImage, MAX_IMAGE_BYTES, openRemoteImage, readLimitedImage } from "./remote-images.js";
 import { StalwartClient, StalwartError } from "./stalwart.js";
+import { clearTranslationCache, getTranslationSettings, saveTranslationSettings, testTranslationConnection, translateMessage, translationCacheCount, translationStatus } from "./translation.js";
+import { OpenAiCompatibleProvider, providerEndpoint, type TranslationProvider } from "./translation-provider.js";
 
 const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/, "邮箱前缀格式无效");
 const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(256);
@@ -47,9 +49,10 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   return result.data;
 }
 
-export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: StalwartClient }) {
+export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: StalwartClient; translationProvider?: TranslationProvider }) {
   const db = deps?.db ?? new AppDatabase(config.DATABASE_PATH);
   const stalwart = deps?.stalwart ?? new StalwartClient(config);
+  const translationProvider = deps?.translationProvider ?? new OpenAiCompatibleProvider(config.NODE_ENV);
   const auth = new AuthService(db, config);
   const app = express();
   app.disable("x-powered-by");
@@ -112,6 +115,40 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   app.use("/api", auth.csrf);
   app.get("/api/auth/session", (_req, res) => res.json({ username: config.ADMIN_USERNAME, csrfToken: res.locals.csrfToken }));
   app.post("/api/auth/logout", (req, res) => { auth.destroySession(req, res); audit(db, req, "logout", "admin"); res.status(204).end(); });
+
+  const translationSettingsSchema = z.object({
+    protocol: z.enum(["responses", "chat_completions"]).nullable(),
+    baseUrl: z.string().max(2048),
+    apiKey: z.string().min(1).max(4096).optional(),
+    clearApiKey: z.boolean().optional(),
+    model: z.string().max(256),
+    targetLanguage: z.enum(["zh-CN", "zh-TW", "en", "ja", "ko", "es", "fr", "de"]),
+    enabled: z.boolean(),
+  });
+  app.get("/api/settings/translation", (_req, res) => res.json({ ...getTranslationSettings(db), cacheEntries: translationCacheCount(db) }));
+  app.put("/api/settings/translation", (req, res) => {
+    const input = parse(translationSettingsSchema, req.body);
+    if (input.baseUrl) providerEndpoint(input.baseUrl, input.protocol ?? "responses", config.NODE_ENV);
+    const result = saveTranslationSettings(db, config.SESSION_SECRET, input);
+    audit(db, req, "translation.settings.update", "settings", "translation", { protocol: input.protocol, enabled: result.enabled, hasApiKey: result.hasApiKey });
+    res.json({ ...result, cacheEntries: translationCacheCount(db) });
+  });
+  const translationLimiter = rateLimit({ windowMs: 60_000, limit: 12, standardHeaders: "draft-8", legacyHeaders: false });
+  app.post("/api/settings/translation/test", translationLimiter, async (req, res) => {
+    try {
+      const result = await testTranslationConnection(db, config.SESSION_SECRET, translationProvider);
+      audit(db, req, "translation.connection.test", "settings", "translation", { protocol: result.protocol, success: true });
+      res.json({ ...result, cacheEntries: translationCacheCount(db) });
+    } catch (error) {
+      audit(db, req, "translation.connection.test", "settings", "translation", { success: false });
+      res.status(502).json({ error: error instanceof Error ? error.message : "翻译连接测试失败" });
+    }
+  });
+  app.delete("/api/settings/translation/cache", (req, res) => {
+    const deleted = clearTranslationCache(db);
+    audit(db, req, "translation.cache.clear", "settings", "translation", { deleted });
+    res.json({ deleted, cacheEntries: 0 });
+  });
 
   app.get("/api/domains", (_req, res) => {
     const rows = db.db.prepare("SELECT * FROM domains ORDER BY is_default DESC,name").all();
@@ -346,7 +383,33 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     const row = mailbox(req.params.id);
     const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
     if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
-    res.json(presentMessage(message, { mailboxId: row.id, emailId: req.params.emailId, sessionSecret: config.SESSION_SECRET }));
+    const presented = presentMessage(message, { mailboxId: row.id, emailId: req.params.emailId, sessionSecret: config.SESSION_SECRET });
+    res.json({ ...presented, translation: translationStatus(db, presented.html, presented.plain) });
+  });
+
+  app.post("/api/mailboxes/:id/messages/:emailId/translate", translationLimiter, async (req, res) => {
+    const emailId = String(req.params.emailId);
+    const row = mailbox(String(req.params.id));
+    const message = await stalwart.getMessage(row.stalwart_account_id, emailId);
+    if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
+    const presented = presentMessage(message, { mailboxId: row.id, emailId, sessionSecret: config.SESSION_SECRET });
+    try {
+      const result = await translateMessage({
+        db,
+        secret: config.SESSION_SECRET,
+        provider: translationProvider,
+        mailboxId: row.id,
+        accountId: row.stalwart_account_id,
+        emailId,
+        bodyHash: presented.bodyHash,
+        html: presented.html,
+        plain: presented.plain,
+      });
+      audit(db, req, "message.translate", "mailbox", String(row.id), { emailId, cached: result.cached, partial: result.partial });
+      res.json(result);
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "邮件翻译失败" });
+    }
   });
 
   app.patch("/api/mailboxes/:id/messages/:emailId/read", async (req, res) => {
@@ -361,6 +424,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     const row = mailbox(req.params.id);
     if (!await stalwart.getMessage(row.stalwart_account_id, req.params.emailId)) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
     await stalwart.deleteMessage(row.stalwart_account_id, req.params.emailId);
+    db.db.prepare("DELETE FROM translation_cache WHERE mailbox_id=? AND email_id=?").run(row.id, req.params.emailId);
     audit(db, req, "message.delete", "mailbox", String(row.id), { emailId: req.params.emailId });
     res.status(204).end();
   });
