@@ -2,6 +2,12 @@
 
 All notable changes follow Keep a Changelog. The project uses Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- Preserve common table-based email structure and allowlisted inline presentation styles without allowing external CSS, active content or application-wide style leakage
+
 ## [0.1.2] - 2026-11-03
 
 ### Changed
