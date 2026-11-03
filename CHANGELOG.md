@@ -26,6 +26,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Fixed
 
+- Replace typed-address mailbox deletion confirmation with one explicit irreversible-action dialog while retaining server-side account resolution
 - Preserve numeric application mailbox IDs when adding Stalwart inbox statistics
 - Scope list/search/pagination to the selected account's Inbox folder
 - Validate inbox pagination parameters and reset state when switching mailboxes

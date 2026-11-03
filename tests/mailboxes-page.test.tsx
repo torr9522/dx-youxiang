@@ -31,6 +31,7 @@ describe("mailbox management", () => {
     if (url === "/api/mailboxes/7/external-login" && init?.method === "PATCH") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes/7/password" && init?.method === "POST") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes/7" && init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+    if (url === "/api/mailboxes/8" && init?.method === "DELETE") return json({ error: "邮件核心操作失败" }, 502);
     if (url === "/api/mailboxes/bulk" && init?.method === "POST") return json({ total: 10, succeeded: 10, skippedExisting: 0, duplicates: 0, failed: 0, results: [] }, 207);
     if (url === "/api/mailboxes/bulk-delete" && init?.method === "POST") {
       const ids = (JSON.parse(String(init.body)) as { ids: number[] }).ids;
@@ -178,22 +179,34 @@ describe("mailbox management", () => {
     ));
   });
 
-  it("requires the full address and calls the real deletion endpoint", async () => {
+  it("uses a simple confirmation and calls the real deletion endpoint without an address body", async () => {
     const user = userEvent.setup();
     render(<MailboxesPage onMailbox={() => undefined} />);
     await screen.findAllByText(mailbox.address);
 
     await user.click(screen.getAllByLabelText("删除邮箱")[0]);
     const dialog = screen.getByRole("dialog");
-    const submit = within(dialog).getByRole("button", { name: "永久删除" });
-    expect((submit as HTMLButtonElement).disabled).toBe(true);
-    await user.type(within(dialog).getByLabelText("输入完整地址确认"), mailbox.address);
-    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+    expect(within(dialog).getByText(mailbox.address)).toBeTruthy();
+    const submit = within(dialog).getByRole("button", { name: "确定删除" });
     await user.click(submit);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/mailboxes/7",
-      expect.objectContaining({ method: "DELETE", body: JSON.stringify({ confirm: mailbox.address }) }),
+      expect.objectContaining({ method: "DELETE" }),
     ));
+    const deletionCall = fetchMock.mock.calls.find(([url, init]) => url === "/api/mailboxes/7" && init?.method === "DELETE");
+    expect(deletionCall?.[1]?.body).toBeUndefined();
+  });
+
+  it("shows a real single-delete error without hiding the mailbox", async () => {
+    const user = userEvent.setup();
+    render(<MailboxesPage onMailbox={() => undefined} />);
+    await screen.findAllByText(secondMailbox.address);
+    await user.click(screen.getAllByLabelText("删除邮箱")[1]);
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "确定删除" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("邮件核心操作失败");
+    expect(screen.getAllByText(secondMailbox.address).length).toBeGreaterThan(0);
   });
 });

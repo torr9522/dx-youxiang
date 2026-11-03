@@ -296,8 +296,6 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   app.delete("/api/mailboxes/:id", async (req, res) => {
     const row = mailbox(req.params.id);
-    const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
-    if (confirm !== row.address) return res.status(400).json({ error: "请输入完整邮箱地址确认删除" });
     await deleteMailboxRecord(row, req);
     res.status(204).end();
   });

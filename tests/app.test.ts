@@ -231,6 +231,20 @@ describe("API access control", () => {
       .send({ ids: Array.from({ length: 101 }, (_, index) => index + 1) }).expect(400);
   });
 
+  it("deletes one mailbox without requiring the address in the request body", async () => {
+    const row = context.db.db.prepare("SELECT id,stalwart_account_id FROM mailboxes WHERE address='3@example.test'").get() as { id: number; stalwart_account_id: string };
+    await request(context.app).delete(`/api/mailboxes/${row.id}`)
+      .set("Cookie", cookie).set("x-csrf-token", csrf).expect(204);
+    expect(deleteMailboxCalls.at(-1)).toBe(row.stalwart_account_id);
+    expect(context.db.db.prepare("SELECT id FROM mailboxes WHERE id=?").get(row.id)).toBeUndefined();
+  });
+
+  it("keeps the SQLite mailbox when a single Stalwart deletion fails", async () => {
+    await request(context.app).delete("/api/mailboxes/2")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).expect(500);
+    expect(context.db.db.prepare("SELECT status FROM mailboxes WHERE id=2").get()).toEqual({ status: "error" });
+  });
+
   it("accepts a valid CSRF token", async () => {
     await request(context.app).post("/api/auth/logout").set("Cookie", cookie).set("x-csrf-token", csrf).expect(204);
   });
