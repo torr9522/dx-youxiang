@@ -100,7 +100,11 @@ const fakeTranslationProvider = {
     const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
     return JSON.stringify({ translations: parsed.nodes.map((node) => ({
       id: node.id,
-      text: node.text.replace("Your verification code is", "您的验证码是").replace("Visit", "访问").replace("to continue", "以继续"),
+      text: node.text
+        .replace("Your verification code is", "您的验证码是")
+        .replace("Visit", "访问")
+        .replace("to continue", "以继续")
+        .replace("A separate English message for deletion testing.", "用于删除测试的独立英文邮件。"),
     })) });
   },
 };

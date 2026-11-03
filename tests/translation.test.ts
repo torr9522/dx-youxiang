@@ -105,7 +105,7 @@ describe("translation storage and node mapping", () => {
       await new Promise((resolve) => setTimeout(resolve, 35));
       active -= 1;
       const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
-      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: `译文 ${node.text}` })) });
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: `第 ${node.id} 段译文` })) });
     } };
     await testTranslationConnection(db, secret, provider);
     saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
@@ -133,7 +133,7 @@ describe("translation storage and node mapping", () => {
       translationCalls += 1;
       await new Promise((resolve) => setTimeout(resolve, 20));
       const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
-      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: `译文 ${node.text}` })) });
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: `第 ${node.id} 段译文` })) });
     } };
     await testTranslationConnection(db, secret, provider);
     saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
@@ -142,6 +142,56 @@ describe("translation storage and node mapping", () => {
     expect(first.html).toBe(second.html);
     expect(translationCalls).toBe(1);
     expect(db.db.prepare("SELECT COUNT(*) count FROM translation_cache WHERE email_id='dedupe'").get()).toEqual({ count: 1 });
+    db.close();
+  });
+
+  it("translates ordinary hyphenated English while preserving machine identifiers", async () => {
+    const db = database();
+    const secret = "s".repeat(48);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", apiKey: "fictional-key", model: "model-a", targetLanguage: "zh-CN", enabled: false });
+    let connection = true;
+    let providerInput = "";
+    const provider = { complete: async (_config: unknown, instructions: string, input: string) => {
+      if (connection) { connection = false; return "DX_TRANSLATION_OK"; }
+      providerInput = input;
+      expect(instructions).toContain("hyphenated words such as non-sensitive");
+      const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: node.text
+        .replace("这是一个 non-sensitive test message。", "这是一封非敏感的测试邮件。")
+        .replace("Use machine identifier", "使用机器标识符") })) });
+    } };
+    await testTranslationConnection(db, secret, provider);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
+    const result = await translateMessage({ db, secret, provider, mailboxId: 1, accountId: "account-a", emailId: "hyphen", html: "<p>这是一个 non-sensitive test message。 Use machine identifier AB-123_CD.</p>", plain: "" });
+    expect(providerInput).toContain("non-sensitive");
+    expect(providerInput).not.toContain("__DX_PROTECTED_0__ test message");
+    expect(providerInput).toContain("__DX_PROTECTED_0__");
+    expect(result).toMatchObject({ partial: false, cached: false });
+    expect(result.html).toContain("非敏感的测试邮件");
+    expect(result.html).toContain("AB-123_CD");
+    db.close();
+  });
+
+  it("retries incomplete node translations and caches only a complete result", async () => {
+    const db = database();
+    const secret = "s".repeat(48);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", apiKey: "fictional-key", model: "model-a", targetLanguage: "zh-CN", enabled: false });
+    let connection = true;
+    let calls = 0;
+    const provider = { complete: async (_config: unknown, _instructions: string, input: string) => {
+      if (connection) { connection = false; return "DX_TRANSLATION_OK"; }
+      calls += 1;
+      const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: calls === 1 ? "账户 security settings 已更新" : "账户安全设置已更新" })) });
+    } };
+    await testTranslationConnection(db, secret, provider);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
+    const result = await translateMessage({ db, secret, provider, mailboxId: 1, accountId: "account-a", emailId: "retry-incomplete", html: "<p>Your account security settings have been updated.</p>", plain: "" });
+    expect(calls).toBe(2);
+    expect(result).toMatchObject({ partial: false, cached: false });
+    expect(result.metrics.apiRequestCount).toBe(2);
+    expect(result.html).toContain("账户安全设置已更新");
+    expect(db.db.prepare("SELECT prompt_version FROM translation_cache WHERE email_id='retry-incomplete'").get()).toEqual({ prompt_version: "email-text-v2" });
     db.close();
   });
 });
