@@ -17,6 +17,7 @@ const mailbox = {
   unreadEmails: 1,
   totalEmails: 2,
 };
+const secondMailbox = { ...mailbox, id: 8, address: "beta@example.test", local_part: "beta", unreadEmails: 0, totalEmails: 0 };
 
 function json(data: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } }));
@@ -25,12 +26,19 @@ function json(data: unknown, status = 200) {
 describe("mailbox management", () => {
   const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (url.startsWith("/api/mailboxes?stats=1")) return json([mailbox]);
+    if (url.startsWith("/api/mailboxes?stats=1")) return json([mailbox, secondMailbox]);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
     if (url === "/api/mailboxes/7/external-login" && init?.method === "PATCH") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes/7/password" && init?.method === "POST") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes/7" && init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes/bulk" && init?.method === "POST") return json({ total: 10, succeeded: 10, skippedExisting: 0, duplicates: 0, failed: 0, results: [] }, 207);
+    if (url === "/api/mailboxes/bulk-delete" && init?.method === "POST") {
+      const ids = (JSON.parse(String(init.body)) as { ids: number[] }).ids;
+      const results = ids.map((id) => id === 8
+        ? { id, address: secondMailbox.address, status: "failed", reason: "邮件核心操作失败" }
+        : { id, address: mailbox.address, status: "deleted" });
+      return json({ total: ids.length, deleted: results.filter((item) => item.status === "deleted").length, failed: results.filter((item) => item.status === "failed").length, results }, 207);
+    }
     throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
   });
 
@@ -129,6 +137,44 @@ describe("mailbox management", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/mailboxes/bulk",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ localParts: ["first", "last"] }) }),
+    ));
+  });
+
+  it("supports single, multiple, select-all and clear selection", async () => {
+    const user = userEvent.setup();
+    render(<MailboxesPage onMailbox={() => undefined} />);
+    await screen.findAllByText(mailbox.address);
+    await user.click(screen.getAllByLabelText(`选择 ${mailbox.address}`)[0]);
+    expect(screen.getByText("已选择 1 个邮箱")).toBeTruthy();
+    await user.click(screen.getAllByLabelText(`选择 ${secondMailbox.address}`)[0]);
+    expect(screen.getByText("已选择 2 个邮箱")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "取消选择" }));
+    expect(screen.queryByText(/已选择/)).toBeNull();
+    await user.click(screen.getByLabelText("全选当前列表"));
+    expect(screen.getByText("已选择 2 个邮箱")).toBeTruthy();
+    await user.click(screen.getByLabelText("全选当前列表"));
+    expect(screen.queryByText(/已选择/)).toBeNull();
+  });
+
+  it("uses one bulk confirmation and keeps failed ids available for retry", async () => {
+    const user = userEvent.setup();
+    render(<MailboxesPage onMailbox={() => undefined} />);
+    await screen.findAllByText(mailbox.address);
+    await user.click(screen.getByLabelText("全选当前列表"));
+    await user.click(screen.getByRole("button", { name: "批量删除" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/确定删除选中的/)).toBeTruthy();
+    expect(within(dialog).getByText("2", { selector: "strong" })).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "确定删除" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mailboxes/bulk-delete",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ ids: [7, 8] }) }),
+    ));
+    expect(await within(dialog).findByText("成功删除 1，失败 1")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "重试失败项" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mailboxes/bulk-delete",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ ids: [8] }) }),
     ));
   });
 

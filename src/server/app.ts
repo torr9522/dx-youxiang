@@ -282,20 +282,48 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     res.status(204).end();
   });
 
-  app.delete("/api/mailboxes/:id", async (req, res) => {
-    const row = mailbox(req.params.id);
-    const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
-    if (confirm !== row.address) return res.status(400).json({ error: "请输入完整邮箱地址确认删除" });
+  async function deleteMailboxRecord(row: any, req: Request) {
     db.db.prepare("UPDATE mailboxes SET status='deleting',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(row.id);
     try {
       await stalwart.deleteMailbox(row.stalwart_account_id);
       db.db.prepare("DELETE FROM mailboxes WHERE id=?").run(row.id);
       audit(db, req, "mailbox.delete", "mailbox", String(row.id), { address: row.address });
-      res.status(204).end();
     } catch (error) {
       db.db.prepare("UPDATE mailboxes SET status='error',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(row.id);
       throw error;
     }
+  }
+
+  app.delete("/api/mailboxes/:id", async (req, res) => {
+    const row = mailbox(req.params.id);
+    const { confirm } = parse(z.object({ confirm: z.string() }), req.body);
+    if (confirm !== row.address) return res.status(400).json({ error: "请输入完整邮箱地址确认删除" });
+    await deleteMailboxRecord(row, req);
+    res.status(204).end();
+  });
+
+  app.post("/api/mailboxes/bulk-delete", async (req, res) => {
+    const input = parse(z.object({
+      ids: z.array(z.number().int().positive()).min(1, "至少选择一个邮箱").max(bulkMailboxLimit, `每次最多删除 ${bulkMailboxLimit} 个邮箱`),
+    }), req.body);
+    const ids = [...new Set(input.ids)];
+    const results: Array<{ id: number; address?: string; status: "deleted" | "failed"; reason?: string }> = [];
+    for (const id of ids) {
+      const row = db.db.prepare(`SELECT m.*,d.name domain FROM mailboxes m JOIN domains d ON d.id=m.domain_id WHERE m.id=?`).get(id) as any;
+      if (!row) {
+        results.push({ id, status: "failed", reason: "邮箱不存在" });
+        continue;
+      }
+      try {
+        await deleteMailboxRecord(row, req);
+        results.push({ id, address: row.address, status: "deleted" });
+      } catch (error) {
+        const reason = error instanceof StalwartError ? error.message : "删除失败";
+        results.push({ id, address: row.address, status: "failed", reason });
+      }
+    }
+    const deleted = results.filter((item) => item.status === "deleted").length;
+    res.status(207).json({ total: results.length, deleted, failed: results.length - deleted, results });
   });
 
   app.get("/api/mailboxes/:id/messages", async (req, res) => {

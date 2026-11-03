@@ -16,6 +16,7 @@ const listCalls: { accountId: string; options: Record<string, unknown> }[] = [];
 const externalLoginCalls: { accountId: string; enabled: boolean; password?: string }[] = [];
 const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[] = [];
 const createMailboxCalls: { localPart: string; domainId: string; description: string }[] = [];
+const deleteMailboxCalls: string[] = [];
 let createdAccountSequence = 0;
 
 describe("TLS readiness", () => {
@@ -63,7 +64,10 @@ const fake = {
     if (localPart === "fail") throw new Error("simulated account creation failure");
     return `created-account-${++createdAccountSequence}`;
   },
-  deleteMailbox: async () => undefined,
+  deleteMailbox: async (accountId: string) => {
+    deleteMailboxCalls.push(accountId);
+    if (accountId === "account-b") throw new Error("simulated account deletion failure");
+  },
 } as any;
 
 beforeAll(async () => {
@@ -199,6 +203,32 @@ describe("API access control", () => {
     await request(context.app).post("/api/mailboxes/bulk")
       .set("Cookie", cookie).set("x-csrf-token", csrf)
       .send({ localParts: Array.from({ length: 101 }, (_, index) => `over-${index}`) }).expect(400);
+  });
+
+  it("bulk deletes server-resolved accounts, deduplicates ids and continues after a failure", async () => {
+    const before = deleteMailboxCalls.length;
+    const response = await request(context.app).post("/api/mailboxes/bulk-delete")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ ids: [1, 2, 2, 3] }).expect(207);
+    expect(response.body).toMatchObject({ total: 3, deleted: 2, failed: 1 });
+    expect(response.body.results).toEqual([
+      expect.objectContaining({ id: 1, address: "a@example.test", status: "deleted" }),
+      expect.objectContaining({ id: 2, address: "b@example.test", status: "failed", reason: "删除失败" }),
+      expect.objectContaining({ id: 3, address: "1@example.test", status: "deleted" }),
+    ]);
+    expect(deleteMailboxCalls.slice(before)).toEqual(["account-a", "account-b", "created-account-1"]);
+    expect(context.db.db.prepare("SELECT id FROM mailboxes WHERE id=1").get()).toBeUndefined();
+    expect(context.db.db.prepare("SELECT status FROM mailboxes WHERE id=2").get()).toEqual({ status: "error" });
+    expect(context.db.db.prepare("SELECT id FROM mailboxes WHERE id=3").get()).toBeUndefined();
+  });
+
+  it("reports missing bulk deletion ids and rejects an oversized request", async () => {
+    const response = await request(context.app).post("/api/mailboxes/bulk-delete")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ ids: [999_999, 4] }).expect(207);
+    expect(response.body).toMatchObject({ total: 2, deleted: 1, failed: 1 });
+    expect(response.body.results[0]).toMatchObject({ id: 999_999, status: "failed", reason: "邮箱不存在" });
+    await request(context.app).post("/api/mailboxes/bulk-delete")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ ids: Array.from({ length: 101 }, (_, index) => index + 1) }).expect(400);
   });
 
   it("accepts a valid CSRF token", async () => {
