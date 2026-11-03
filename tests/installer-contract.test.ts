@@ -49,6 +49,21 @@ describe("native installer contracts", () => {
     expect(retryTimer).toContain("OnUnitActiveSec=30m");
   });
 
+  it("uses one explicit and immutable ACME directory for each supported mode", async () => {
+    const installer = await readFile("scripts/install.sh", "utf8");
+    const obtain = await readFile("scripts/obtain-certificate.sh", "utf8");
+
+    expect(installer).toContain("ACME_MODE=${ACME_MODE:-production}");
+    expect(installer).toContain("staging) ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory");
+    expect(installer).toContain("production) ACME_DIRECTORY=https://acme-v02.api.letsencrypt.org/directory");
+    expect(installer).toContain("ACME_MODE=$ACME_MODE");
+    expect(installer).toContain("ACME_DIRECTORY=$ACME_DIRECTORY");
+    expect(obtain).toContain('--server "$ACME_DIRECTORY"');
+    expect(obtain).toContain('test "${ACME_DIRECTORY:-}" = "$expected_directory"');
+    expect(obtain).not.toContain("--staging");
+    expect(obtain).not.toMatch(/fallback|second.*server/i);
+  });
+
   it("keeps public SMTP gated until trusted readiness and an encrypted backup exist", async () => {
     const installer = await readFile("scripts/install.sh", "utf8");
     const firewall = await readFile("scripts/firewall.sh", "utf8");

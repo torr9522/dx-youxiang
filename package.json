@@ -20,7 +20,7 @@
     "lint": "eslint .",
     "audit:licenses": "license-checker-rseidelsohn --excludePrivatePackages --onlyAllow '0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Python-2.0;CC-BY-3.0;CC-BY-4.0;CC0-1.0;BlueOak-1.0.0'",
     "audit:secrets": "gitleaks git --redact --no-banner",
-    "sbom": "npm sbom --omit=dev --sbom-format=cyclonedx > sbom.cdx.json",
+    "sbom": "node scripts/generate-sbom.mjs",
     "admin:hash": "node scripts/hash-password.mjs"
   },
   "dependencies": {
@@ -36,6 +36,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@eslint/js": "10.0.1",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/react": "16.3.3",

@@ -2,8 +2,25 @@
 set -eu
 test "$(id -u)" -eq 0
 test -n "${MAIL_HOST:-}"
+case "${ACME_MODE:-}" in
+  staging)
+    expected_directory=https://acme-staging-v02.api.letsencrypt.org/directory
+    ;;
+  production)
+    expected_directory=https://acme-v02.api.letsencrypt.org/directory
+    ;;
+  *)
+    echo "ACME_MODE must be staging or production" >&2
+    exit 1
+    ;;
+esac
+test "${ACME_DIRECTORY:-}" = "$expected_directory" || {
+  echo "ACME_DIRECTORY does not match ACME_MODE=$ACME_MODE" >&2
+  exit 1
+}
 certbot certonly --webroot -w /var/lib/dx-youxiang/acme -d "$MAIL_HOST" --agree-tos --no-eff-email \
   --register-unsafely-without-email --non-interactive \
+  --server "$ACME_DIRECTORY" \
   --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/dx-youxiang
 
 app_port=$(sed -n 's/^PORT=//p' /etc/dx-youxiang/app.env | tail -1)

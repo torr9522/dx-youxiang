@@ -14,6 +14,14 @@ CONFIG_DIR=/etc/dx-youxiang
 DATA_DIR=/var/lib/dx-youxiang
 BACKUP_DIR=/var/backups/dx-youxiang
 CADDY_CONFIG=${CADDY_CONFIG:-/etc/caddy/Caddyfile}
+ACME_MODE=${ACME_MODE:-production}
+
+case "$ACME_MODE" in
+  staging) ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory ;;
+  production) ACME_DIRECTORY=https://acme-v02.api.letsencrypt.org/directory ;;
+  *) echo "ACME_MODE must be staging or production" >&2; exit 1 ;;
+esac
+export ACME_MODE ACME_DIRECTORY
 
 test "$(id -u)" -eq 0 || { echo "run as root" >&2; exit 1; }
 test -r /etc/os-release
@@ -317,6 +325,7 @@ STALWART_PASSWORD=$service_password
 TLS_CERT_PATH=$CONFIG_DIR/tls/fullchain.pem
 MAIL_STORAGE_PATH=/var/lib/stalwart
 TRUST_PROXY=loopback
+ACME_MODE=$ACME_MODE
 EOF
 chown root:dx-youxiang "$CONFIG_DIR/app.env"
 chmod 0640 "$CONFIG_DIR/app.env"
@@ -342,13 +351,18 @@ fi
 
 install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 install -o root -g root -m 0750 "$APP_BASE/current/deploy/certbot/deploy-hook.sh" /etc/letsencrypt/renewal-hooks/deploy/dx-youxiang
-printf 'MAIL_HOST=%s\n' "$MAIL_HOST" > "$CONFIG_DIR/certificate.env"
+cat > "$CONFIG_DIR/certificate.env" <<EOF
+MAIL_HOST=$MAIL_HOST
+ACME_MODE=$ACME_MODE
+ACME_DIRECTORY=$ACME_DIRECTORY
+EOF
 chmod 0600 "$CONFIG_DIR/certificate.env"
 systemctl enable --now certbot.timer dx-youxiang-backup.timer dx-youxiang-monitor.timer dx-youxiang-certificate-retry.timer
 systemctl start dx-youxiang-backup.service
 systemctl start dx-youxiang-certificate-retry.service
 "$APP_BASE/current/scripts/health-check.sh"
 
-printf '\nPROJECT=dx-youxiang\nVERSION=%s\nMODE=%s\nWEB_URL=https://%s\nADMIN_USERNAME=admin\n' "${DX_YOUXIANG_VERSION:-0.1.0}" "$install_mode" "$MAIL_HOST"
+printf '\nPROJECT=dx-youxiang\nVERSION=%s\nMODE=%s\nACME_MODE=%s\nACME_DIRECTORY=%s\nWEB_URL=https://%s\nADMIN_USERNAME=admin\n' \
+  "${DX_YOUXIANG_VERSION:-0.1.0}" "$install_mode" "$ACME_MODE" "$ACME_DIRECTORY" "$MAIL_HOST"
 printf 'ADMIN_PASSWORD=the password entered during installation (not written to logs)\n'
 printf 'MAIL_DOMAIN=%s\nMAIL_HOST=%s\nAPP_PORT=%s\n' "$MAIL_DOMAIN" "$MAIL_HOST" "$APP_PORT"

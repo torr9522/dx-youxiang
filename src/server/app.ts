@@ -21,11 +21,15 @@ const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").trans
 
 type CertificateStatusSource = Pick<X509Certificate, "validTo" | "issuer" | "subject" | "checkHost">;
 
-export function assessTlsCertificate(cert: CertificateStatusSource, mailHost: string, now = Date.now()) {
+export function assessTlsCertificate(cert: CertificateStatusSource, mailHost: string, acmeMode: "staging" | "production" = "production", now = Date.now()) {
   const days = Math.floor((Date.parse(cert.validTo) - now) / 86_400_000);
   if (cert.subject === cert.issuer) return { ok: false, detail: "bootstrap self-signed certificate" };
   if (!cert.checkHost(mailHost)) return { ok: false, detail: "certificate hostname mismatch" };
-  return { ok: days > 7, detail: `${days} days remaining` };
+  const stagingCertificate = cert.issuer.includes("(STAGING)");
+  if (acmeMode === "staging" && !stagingCertificate) return { ok: false, detail: "certificate is not from Let's Encrypt staging" };
+  if (acmeMode === "production" && stagingCertificate) return { ok: false, detail: "staging certificate is not valid for production" };
+  const trust = acmeMode === "staging" ? "staging test chain (not publicly trusted)" : "production chain";
+  return { ok: days > 7, detail: `${trust}; ${days} days remaining` };
 }
 
 function queryInteger(defaultValue: number, minimum: number, maximum: number) {
@@ -82,7 +86,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     } catch { checks.mailStorage = { ok: false, detail: "mail storage unavailable" }; }
     try {
       const cert = new X509Certificate(await fs.readFile(config.TLS_CERT_PATH));
-      checks.tls = assessTlsCertificate(cert, config.MAIL_HOST);
+      checks.tls = assessTlsCertificate(cert, config.MAIL_HOST, config.ACME_MODE);
     } catch { checks.tls = { ok: false, detail: "certificate unavailable" }; }
     const ok = Object.values(checks).every((check) => check.ok);
     res.status(ok ? 200 : 503).json({ status: ok ? "ready" : "degraded", checks });

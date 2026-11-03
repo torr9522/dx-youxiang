@@ -17,6 +17,7 @@ const schema = z.object({
   TLS_CERT_PATH: z.string().default("/etc/dx-youxiang/tls/fullchain.pem"),
   MAIL_STORAGE_PATH: z.string().default("/var/lib/stalwart"),
   TRUST_PROXY: z.string().default("loopback"),
+  ACME_MODE: z.enum(["staging", "production"]).default("production"),
 });
 
 export type Config = z.infer<typeof schema>;

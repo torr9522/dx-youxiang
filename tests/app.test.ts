@@ -35,6 +35,20 @@ describe("TLS readiness", () => {
   it("accepts a non-self-issued certificate with the expected hostname and lifetime", () => {
     const result = assessTlsCertificate({ validTo: future, subject: "CN=mail.example.test", issuer: "CN=Example CA", checkHost: () => "mail.example.test" }, "mail.example.test");
     expect(result.ok).toBe(true);
+    expect(result.detail).toContain("production chain");
+  });
+
+  it("accepts only an explicitly identified staging certificate in staging mode", () => {
+    const staging = assessTlsCertificate({ validTo: future, subject: "CN=mail.example.test", issuer: "CN=(STAGING) Ersatz Edamame E1", checkHost: () => "mail.example.test" }, "mail.example.test", "staging");
+    expect(staging).toMatchObject({ ok: true });
+    expect(staging.detail).toContain("not publicly trusted");
+    expect(assessTlsCertificate({ validTo: future, subject: "CN=mail.example.test", issuer: "CN=Example CA", checkHost: () => "mail.example.test" }, "mail.example.test", "staging"))
+      .toEqual({ ok: false, detail: "certificate is not from Let's Encrypt staging" });
+  });
+
+  it("never accepts a staging certificate in production mode", () => {
+    expect(assessTlsCertificate({ validTo: future, subject: "CN=mail.example.test", issuer: "CN=(STAGING) Ersatz Edamame E1", checkHost: () => "mail.example.test" }, "mail.example.test", "production"))
+      .toEqual({ ok: false, detail: "staging certificate is not valid for production" });
   });
 });
 
@@ -76,7 +90,7 @@ beforeAll(async () => {
     PUBLIC_ORIGIN: "https://mail.example.test", MAIL_DOMAIN: "example.test", MAIL_HOST: "mail.example.test",
     DATABASE_PATH: join(temp, "app.db"), ADMIN_USERNAME: "admin", ADMIN_PASSWORD_HASH: await argon2.hash("Correct-Horse-99!"), SESSION_SECRET: "x".repeat(48),
     STALWART_BASE_URL: "http://127.0.0.1:8080", STALWART_USERNAME: "service@example.test", STALWART_PASSWORD: "fake-secret-for-test",
-    TLS_CERT_PATH: join(temp, "cert.pem"), MAIL_STORAGE_PATH: temp, TRUST_PROXY: "loopback",
+    TLS_CERT_PATH: join(temp, "cert.pem"), MAIL_STORAGE_PATH: temp, TRUST_PROXY: "loopback", ACME_MODE: "production",
   } satisfies Config;
   const db = new AppDatabase(config.DATABASE_PATH);
   db.db.prepare("INSERT INTO domains(stalwart_domain_id,name,is_default) VALUES('domain-a','example.test',1)").run();

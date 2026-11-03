@@ -1,7 +1,7 @@
 # Release Process
 
 1. Confirm a clean worktree, reviewed commits, `main`, and the intended version in package/changelog/docs.
-2. Run all gates in `docs/TESTING.md`, regenerate `sbom.cdx.json`, and inspect the diff.
+2. Run all gates in `docs/TESTING.md`, regenerate `sbom.cdx.json`, and inspect the diff. The official CycloneDX npm generator is used because npm's built-in `--omit=dev` output can omit direct browser dependencies that are also peer dependencies. The project generator prunes unreachable development components, fails if React or ReactDOM is absent, adds exact installer metadata for pinned external components, and validates the final CycloneDX schema.
 3. Preserve the original encrypted Git bundle. Before the first public push, scan all history for secrets and real deployment identifiers.
 4. Confirm the only GitHub push target is `https://github.com/torr9522/dx-youxiang.git` and the authenticated user is `torr9522`.
 5. Create a new immutable candidate tag such as `v0.1.0-rc.1`. Never move or delete a published tag.

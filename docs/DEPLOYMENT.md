@@ -18,6 +18,8 @@ The installer never changes DNS. It refuses to add later domains through the app
 
 The installer does not clear or replace UFW/nftables rules. Its project-owned nftables table always rejects new outbound TCP connections to 25/465/587, so replies on established inbound SMTP sessions continue. Before initial trusted TLS and backup readiness it also rejects new public inbound TCP 25 connections; successful certificate setup opens only that gate. Existing host/provider inbound policies must already permit 25/80/443/993; the installer reports but cannot change a provider firewall.
 
+Production is the default ACME mode. Release acceptance may explicitly prefix the install command with `ACME_MODE=staging`; the only accepted values are `staging` and `production`. They map respectively to `https://acme-staging-v02.api.letsencrypt.org/directory` and `https://acme-v02.api.letsencrypt.org/directory`. The selected mode and exact directory are persisted in `/etc/dx-youxiang/certificate.env`, passed explicitly to Certbot, and never fall back to the other environment. Staging certificates are deliberately not trusted by browsers and must be verified with a separate test-only CA bundle from Let's Encrypt rather than adding staging roots to the system trust store.
+
 ## Secrets and permissions
 
 `/etc/dx-youxiang/app.env` is `0640 root:dx-youxiang`. Emergency Stalwart administrator material and the Restic password are root-only. TLS files are `0640 root:caddy`; only Caddy plus explicitly added Stalwart/application service users can read them.

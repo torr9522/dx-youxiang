@@ -4,6 +4,8 @@
 
 Run `npm ci`, lint, both TypeScript checks, Vitest, production build, ShellCheck, shell syntax checks, production dependency audit, full dependency review, license audit, SBOM generation, Gitleaks history scan, and explicit real-domain/IP/mailbox/key/database/mail scans.
 
+The CycloneDX gate must verify that `react`, `react-dom`, Stalwart, the private Node.js runtime, Caddy and Cosign are present with the versions and digests pinned by the installer. Do not replace a previously complete SBOM with an npm-only graph.
+
 Tests must cover authentication/CSRF, positive numeric route IDs, mailbox account binding, Inbox-only list/search/pagination, detail/attachment ownership, read state, HTML sanitization, six-character mailbox passwords and shorter rejection.
 
 ## Clean Install Gate

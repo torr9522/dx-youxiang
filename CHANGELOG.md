@@ -6,6 +6,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Added
 
+- Explicit `ACME_MODE=staging|production` installation with a fixed Let's Encrypt directory, persisted renewal/retry configuration and no automatic CA-mode fallback
+- Release SBOM validation for React, ReactDOM and the pinned Stalwart, Node.js, Caddy and Cosign deployment components
 - Unified light visual system with white surfaces, blue primary actions, blue selection states, shared controls, restrained borders and responsive dialogs across every administrator page
 - API-backed batch mailbox creation with numeric ranges, editable per-line prefixes, a 100-account safety limit, duplicate/existing-address handling and per-item results
 - Server-validated mailbox selection and batch deletion with one confirmation, per-account cleanup results and retryable failures
@@ -27,6 +29,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Fixed
 
+- Distinguish Let's Encrypt staging certificates from production certificates in readiness instead of treating every non-self-signed certificate as production-ready
 - Replace typed-address mailbox deletion confirmation with one explicit irreversible-action dialog while retaining server-side account resolution
 - Preserve numeric application mailbox IDs when adding Stalwart inbox statistics
 - Scope list/search/pagination to the selected account's Inbox folder
