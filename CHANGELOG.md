@@ -6,6 +6,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Added
 
+- API-backed batch mailbox creation with numeric ranges, editable per-line prefixes, a 100-account safety limit, duplicate/existing-address handling and per-item results
 - Modern light mail workspace with a desktop three-column layout and mobile mailbox-to-message navigation
 - Real API-backed mailbox creation, mailbox search, address copying, message search, read-state updates, verification-code copying and attachment access in the new workspace
 - Responsive mailbox-management rows for external-login, password-reset and deletion workflows on narrow screens

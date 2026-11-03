@@ -15,6 +15,7 @@ import { StalwartClient, StalwartError } from "./stalwart.js";
 
 const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/, "邮箱前缀格式无效");
 const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(256);
+const bulkMailboxLimit = 100;
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
 
@@ -175,22 +176,74 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     });
   });
 
-  app.post("/api/mailboxes", async (req, res) => {
-    const input = parse(z.object({ localPart, domainId: z.number().int().positive(), note: z.string().max(500).default("") }), req.body);
-    const domain = db.db.prepare("SELECT * FROM domains WHERE id=? AND enabled=1").get(input.domainId) as any;
-    if (!domain) return res.status(400).json({ error: "域名未配置或未启用" });
-    const address = `${input.localPart}@${domain.name}`.toLowerCase();
-    if (db.db.prepare("SELECT id FROM mailboxes WHERE address=?").get(address)) return res.status(409).json({ error: "邮箱地址已存在" });
-    const accountId = await stalwart.createMailbox(input.localPart.toLowerCase(), domain.stalwart_domain_id, input.note || address);
+  async function createMailboxRecord(input: { localPart: string; domain: any; note: string }, req: Request) {
+    const normalizedLocalPart = input.localPart.toLowerCase();
+    const address = `${normalizedLocalPart}@${input.domain.name}`;
+    if (db.db.prepare("SELECT id FROM mailboxes WHERE address=?").get(address)) {
+      throw Object.assign(new Error("邮箱地址已存在"), { status: 409 });
+    }
+    const accountId = await stalwart.createMailbox(normalizedLocalPart, input.domain.stalwart_domain_id, input.note || address);
     try {
       const result = db.db.prepare(`INSERT INTO mailboxes(stalwart_account_id,address,local_part,domain_id,note) VALUES(?,?,?,?,?)`)
-        .run(accountId, address, input.localPart.toLowerCase(), input.domainId, input.note);
+        .run(accountId, address, normalizedLocalPart, input.domain.id, input.note);
       audit(db, req, "mailbox.create", "mailbox", String(result.lastInsertRowid), { address });
-      res.status(201).json({ id: Number(result.lastInsertRowid), address, external_login: 0 });
+      return { id: Number(result.lastInsertRowid), address, external_login: 0 };
     } catch (error) {
       await stalwart.deleteMailbox(accountId).catch(() => undefined);
       throw error;
     }
+  }
+
+  app.post("/api/mailboxes", async (req, res) => {
+    const input = parse(z.object({ localPart, domainId: z.number().int().positive(), note: z.string().max(500).default("") }), req.body);
+    const domain = db.db.prepare("SELECT * FROM domains WHERE id=? AND enabled=1").get(input.domainId) as any;
+    if (!domain) return res.status(400).json({ error: "域名未配置或未启用" });
+    res.status(201).json(await createMailboxRecord({ localPart: input.localPart, domain, note: input.note }, req));
+  });
+
+  app.post("/api/mailboxes/bulk", async (req, res) => {
+    const input = parse(z.object({
+      localParts: z.array(z.string().max(256)).min(1, "至少提供一个邮箱前缀").max(bulkMailboxLimit, `每次最多创建 ${bulkMailboxLimit} 个邮箱`),
+    }), req.body);
+    const domain = db.db.prepare("SELECT * FROM domains WHERE enabled=1 AND is_default=1 LIMIT 1").get() as any;
+    if (!domain) return res.status(409).json({ error: "默认邮箱域名未配置或未启用" });
+
+    const results: Array<{ localPart: string; address: string; status: "created" | "skipped_existing" | "duplicate" | "failed"; reason?: string }> = [];
+    const seen = new Set<string>();
+    for (const rawLocalPart of input.localParts) {
+      const normalizedLocalPart = rawLocalPart.trim().toLowerCase();
+      const address = `${normalizedLocalPart}@${domain.name}`;
+      if (seen.has(normalizedLocalPart)) {
+        results.push({ localPart: normalizedLocalPart, address, status: "duplicate", reason: "本批次中重复" });
+        continue;
+      }
+      seen.add(normalizedLocalPart);
+      const validation = localPart.safeParse(normalizedLocalPart);
+      if (!validation.success) {
+        results.push({ localPart: normalizedLocalPart, address, status: "failed", reason: validation.error.issues[0]?.message ?? "邮箱前缀格式无效" });
+        continue;
+      }
+      if (db.db.prepare("SELECT id FROM mailboxes WHERE address=?").get(address)) {
+        results.push({ localPart: normalizedLocalPart, address, status: "skipped_existing", reason: "邮箱已存在" });
+        continue;
+      }
+      try {
+        await createMailboxRecord({ localPart: normalizedLocalPart, domain, note: "" }, req);
+        results.push({ localPart: normalizedLocalPart, address, status: "created" });
+      } catch (error) {
+        const reason = error instanceof StalwartError ? error.message : error instanceof Error && (error as any).status < 500 ? error.message : "创建失败";
+        results.push({ localPart: normalizedLocalPart, address, status: "failed", reason });
+      }
+    }
+    const count = (status: (typeof results)[number]["status"]) => results.filter((item) => item.status === status).length;
+    res.status(207).json({
+      total: results.length,
+      succeeded: count("created"),
+      skippedExisting: count("skipped_existing"),
+      duplicates: count("duplicate"),
+      failed: count("failed"),
+      results,
+    });
   });
 
   function mailbox(idValue: string) {

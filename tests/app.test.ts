@@ -15,6 +15,8 @@ let cookie = "";
 const listCalls: { accountId: string; options: Record<string, unknown> }[] = [];
 const externalLoginCalls: { accountId: string; enabled: boolean; password?: string }[] = [];
 const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[] = [];
+const createMailboxCalls: { localPart: string; domainId: string; description: string }[] = [];
+let createdAccountSequence = 0;
 
 describe("TLS readiness", () => {
   const future = new Date(Date.now() + 30 * 86_400_000).toUTCString();
@@ -56,6 +58,12 @@ const fake = {
   deleteMessage: async () => undefined,
   setExternalLogin: async (accountId: string, enabled: boolean, password?: string) => { externalLoginCalls.push({ accountId, enabled, password }); },
   updateMailbox: async (accountId: string, patch: Record<string, unknown>) => { updateMailboxCalls.push({ accountId, patch }); },
+  createMailbox: async (localPart: string, domainId: string, description: string) => {
+    createMailboxCalls.push({ localPart, domainId, description });
+    if (localPart === "fail") throw new Error("simulated account creation failure");
+    return `created-account-${++createdAccountSequence}`;
+  },
+  deleteMailbox: async () => undefined,
 } as any;
 
 beforeAll(async () => {
@@ -150,6 +158,47 @@ describe("API access control", () => {
     await request(context.app).post("/api/mailboxes/1/password")
       .set("Cookie", cookie).set("x-csrf-token", csrf)
       .send({ password: "abcde" }).expect(400);
+  });
+
+  it("bulk creates ranges of 10 and 100 through real account provisioning", async () => {
+    const ten = Array.from({ length: 10 }, (_, index) => String(index + 1));
+    const first = await request(context.app).post("/api/mailboxes/bulk")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ localParts: ten }).expect(207);
+    expect(first.body).toMatchObject({ total: 10, succeeded: 10, skippedExisting: 0, duplicates: 0, failed: 0 });
+
+    const hundred = Array.from({ length: 100 }, (_, index) => String(index + 1));
+    const second = await request(context.app).post("/api/mailboxes/bulk")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ localParts: hundred }).expect(207);
+    expect(second.body).toMatchObject({ total: 100, succeeded: 90, skippedExisting: 10, duplicates: 0, failed: 0 });
+    expect(context.db.db.prepare("SELECT COUNT(*) count FROM mailboxes WHERE address LIKE '%@example.test'").get()?.count).toBe(102);
+    expect(createMailboxCalls).toEqual(expect.arrayContaining([
+      { localPart: "1", domainId: "domain-a", description: "1@example.test" },
+      { localPart: "100", domainId: "domain-a", description: "100@example.test" },
+    ]));
+  });
+
+  it("reports existing, duplicate, invalid and failed items without rolling back successes", async () => {
+    const response = await request(context.app).post("/api/mailboxes/bulk")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ localParts: ["a", "Fresh", "fresh", "bad@prefix", "fail"] }).expect(207);
+    expect(response.body).toMatchObject({ total: 5, succeeded: 1, skippedExisting: 1, duplicates: 1, failed: 2 });
+    expect(response.body.results).toEqual([
+      expect.objectContaining({ address: "a@example.test", status: "skipped_existing" }),
+      expect.objectContaining({ address: "fresh@example.test", status: "created" }),
+      expect.objectContaining({ address: "fresh@example.test", status: "duplicate" }),
+      expect.objectContaining({ address: "bad@prefix@example.test", status: "failed", reason: "邮箱前缀格式无效" }),
+      expect.objectContaining({ address: "fail@example.test", status: "failed" }),
+    ]);
+    expect(context.db.db.prepare("SELECT address FROM mailboxes WHERE address='fresh@example.test'").get()).toBeTruthy();
+    expect(context.db.db.prepare("SELECT address FROM mailboxes WHERE address='fail@example.test'").get()).toBeUndefined();
+  });
+
+  it("rejects an empty or oversized bulk request instead of truncating it", async () => {
+    await request(context.app).post("/api/mailboxes/bulk")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ localParts: [] }).expect(400);
+    await request(context.app).post("/api/mailboxes/bulk")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ localParts: Array.from({ length: 101 }, (_, index) => `over-${index}`) }).expect(400);
   });
 
   it("accepts a valid CSRF token", async () => {

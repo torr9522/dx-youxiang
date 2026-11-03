@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Eye, KeyRound, MailPlus, MoreHorizontal, Power, Search, Trash2 } from "lucide-react";
+import { Eye, KeyRound, Layers3, MailPlus, MoreHorizontal, Power, Search, Trash2 } from "lucide-react";
 import { api, type Domain, type Mailbox } from "../api";
 import { Modal } from "../components/Modal";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
+import { BulkCreateMailboxDialog } from "../components/BulkCreateMailboxDialog";
 
-type Dialog = "create" | "login" | "password" | "delete" | null;
+type Dialog = "create" | "bulk-create" | "login" | "password" | "delete" | null;
 
 export function MailboxesPage({ onMailbox }: { onMailbox: (id: number) => void }) {
   const [rows, setRows] = useState<Mailbox[]>([]); const [domains, setDomains] = useState<Domain[]>([]);
@@ -14,7 +15,7 @@ export function MailboxesPage({ onMailbox }: { onMailbox: (id: number) => void }
   useEffect(() => { void Promise.all([api<Mailbox[]>("/api/mailboxes?stats=1"), api<Domain[]>("/api/domains")]).then(([m, d]) => { setRows(m); setDomains(d); }).catch((e) => setError(e.message)); }, []);
   const open = (kind: Dialog, row?: Mailbox) => { setSelected(row ?? null); setDialog(kind); setError(""); };
   return <div>
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-semibold text-stone-900">邮箱管理</h1><p className="mt-1 text-sm text-stone-500">{rows.length} 个独立账户</p></div><button onClick={() => open("create")} className="focus-ring flex h-10 items-center gap-2 rounded-md bg-[#166534] px-4 text-sm font-medium text-white"><MailPlus size={17} />创建邮箱</button></div>
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-semibold text-stone-900">邮箱管理</h1><p className="mt-1 text-sm text-stone-500">{rows.length} 个独立账户</p></div><div className="flex flex-wrap gap-2"><button onClick={() => open("bulk-create")} className="focus-ring flex h-10 items-center gap-2 rounded-md border border-stone-300 bg-white px-4 text-sm font-medium text-stone-700 hover:bg-stone-50"><Layers3 size={17} />批量创建</button><button onClick={() => open("create")} className="focus-ring flex h-10 items-center gap-2 rounded-md bg-[#166534] px-4 text-sm font-medium text-white"><MailPlus size={17} />创建邮箱</button></div></div>
     <form className="mb-4 flex max-w-md gap-2" onSubmit={(e) => { e.preventDefault(); load(); }}><div className="relative flex-1"><Search className="absolute left-3 top-3 text-stone-400" size={17} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索地址或备注" className="focus-ring h-10 w-full rounded-md border border-stone-300 bg-white pl-9 pr-3 text-sm outline-none" /></div><button className="focus-ring rounded-md border border-stone-300 bg-white px-4 text-sm hover:bg-stone-50">搜索</button></form>
     {error && <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     <div className="hidden overflow-x-auto rounded-lg border border-stone-200 bg-white md:block"><table className="w-full min-w-[920px] border-collapse text-sm"><thead><tr className="h-11 border-b border-stone-200 bg-stone-50 text-left text-xs font-medium text-stone-500"><th className="px-4">邮箱地址</th><th className="px-4">未读 / 总数</th><th className="px-4">外部登录</th><th className="px-4">备注</th><th className="px-4">创建时间</th><th className="w-52 px-4 text-right">操作</th></tr></thead><tbody>
@@ -31,6 +32,7 @@ export function MailboxesPage({ onMailbox }: { onMailbox: (id: number) => void }
       {!rows.length && <div className="p-12 text-center text-sm text-stone-500"><MoreHorizontal className="mx-auto mb-2" />暂无邮箱</div>}
     </div>
     {dialog === "create" && <CreateMailboxDialog domains={domains} onClose={() => setDialog(null)} onCreated={() => { setDialog(null); void load(); }} />}
+    {dialog === "bulk-create" && <BulkCreateMailboxDialog domains={domains} onClose={() => setDialog(null)} onChanged={() => { void load(); }} />}
     {dialog === "login" && selected && <LoginDialog mailbox={selected} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
     {dialog === "password" && selected && <PasswordDialog mailbox={selected} onClose={() => setDialog(null)} />}
     {dialog === "delete" && selected && <DeleteDialog mailbox={selected} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
