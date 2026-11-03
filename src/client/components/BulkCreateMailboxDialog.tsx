@@ -67,7 +67,7 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
         {rows.map((row, index) => <div key={row.id} className="flex items-center gap-2">
           <label className="sr-only" htmlFor={`bulk-local-${row.id}`}>邮箱前缀 {index + 1}</label>
           <input id={`bulk-local-${row.id}`} value={row.value} onChange={(event) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item))} placeholder={`前缀 ${index + 1}`} className="form-control h-11 min-w-0 flex-1 px-3" />
-          <span className="max-w-[45%] break-all text-sm text-slate-500">@{defaultDomain?.name ?? "未配置"}</span>
+          <span title={defaultDomain?.name} className="max-w-[40%] truncate text-sm text-slate-500">@{defaultDomain?.name ?? "未配置"}</span>
           <button type="button" disabled={rows.length === 1} onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label={`删除第 ${index + 1} 行`} className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-md text-red-600 hover:bg-red-50 disabled:opacity-30"><Trash2 size={17} /></button>
         </div>)}
         <button type="button" disabled={rows.length >= BULK_LIMIT} onClick={() => setRows((current) => [...current, { id: nextId.current++, value: "" }])} className="btn-secondary focus-ring h-10 gap-2 px-3 text-sm"><Plus size={16} />添加一行</button>

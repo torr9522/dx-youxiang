@@ -152,7 +152,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
         {mailboxes.map((mailbox) => <div key={mailbox.id} className={`group mx-2 mb-1 flex min-h-16 items-center rounded-md border ${mailbox.id === selectedMailboxId ? "border-blue-200 bg-blue-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
           <button onClick={() => void selectMailbox(mailbox)} className="focus-ring min-w-0 flex-1 px-3 py-2.5 text-left">
-            <span className={`block break-all text-sm leading-5 ${mailbox.id === selectedMailboxId ? "font-semibold text-blue-800" : "font-medium text-slate-800"}`}>{mailbox.address}</span>
+            <span title={mailbox.address} className={`block truncate text-sm leading-5 ${mailbox.id === selectedMailboxId ? "font-semibold text-blue-800" : "font-medium text-slate-800"}`}>{mailbox.address}</span>
             <span className="mt-1 flex items-center gap-2 text-xs text-slate-500"><span>{mailbox.totalEmails ?? "-"} 封</span>{Boolean(mailbox.unreadEmails) && <span className="rounded-full bg-blue-600 px-1.5 py-0.5 font-medium text-white">{mailbox.unreadEmails} 未读</span>}</span>
           </button>
           <button title="复制邮箱地址" aria-label={`复制 ${mailbox.address}`} onClick={async () => { try { await copyText(mailbox.address); showToast("已复制"); } catch (caught) { showToast((caught as Error).message); } }} className="focus-ring mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-white hover:text-blue-700"><Copy size={15} /></button>
@@ -166,7 +166,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
       <div className="border-b border-slate-200 px-4 pb-3 pt-3">
         <div className="flex min-h-8 items-center gap-2">
           <button onClick={() => setMobileStage("mailboxes")} aria-label="返回邮箱列表" className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"><ArrowLeft size={18} /></button>
-          <div className="min-w-0 flex-1"><div className="break-all text-sm font-semibold text-slate-900">{selectedMailbox?.address ?? "选择邮箱"}</div><div className="mt-0.5 text-xs text-slate-500">{total} 封邮件</div></div>
+          <div className="min-w-0 flex-1"><div title={selectedMailbox?.address} className="truncate text-sm font-semibold text-slate-900">{selectedMailbox?.address ?? "选择邮箱"}</div><div className="mt-0.5 text-xs text-slate-500">{total} 封邮件</div></div>
           {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void loadMessages(selectedMailboxId, position)} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
         </div>
         <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0); }}>

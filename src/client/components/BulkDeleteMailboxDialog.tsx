@@ -28,7 +28,7 @@ export function BulkDeleteMailboxDialog({ mailboxes, onClose, onChanged }: { mai
   return <Modal title="批量删除邮箱" onClose={onClose}>
     {!result ? <>
       <p className="text-sm text-slate-800">确定删除选中的 <strong>{mailboxes.length}</strong> 个邮箱？</p>
-      <div className="mt-3 max-h-32 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">{mailboxes.map((mailbox) => <div className="break-all" key={mailbox.id}>{mailbox.address}</div>)}</div>
+      <div className="mt-3 max-h-32 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">{mailboxes.map((mailbox) => <div title={mailbox.address} className="truncate" key={mailbox.id}>{mailbox.address}</div>)}</div>
       <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">删除后，这些邮箱及其全部邮件、附件和文件夹将被永久删除，无法恢复。</p>
     </> : <div role="status" className="rounded-md border border-slate-200 p-3 text-sm">
       <p className="font-medium text-slate-900">删除完成：总计 {result.total} 个</p>

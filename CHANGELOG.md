@@ -2,6 +2,12 @@
 
 All notable changes follow Keep a Changelog. The project uses Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- Keep mailbox addresses on one truncated mobile line while preserving full-value copy actions across inbox, management and dialog views
+
 ## [0.1.1] - 2026-11-03
 
 ### Fixed
