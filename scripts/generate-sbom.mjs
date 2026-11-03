@@ -67,6 +67,7 @@ const raw = execFileSync(path.join(root, "node_modules/.bin/cyclonedx-npm"), [
   "--spec-version", "1.5",
   "--output-format", "JSON",
   "--output-file", "-",
+  "--output-reproducible",
   "--validate",
 ], {
   cwd: root,

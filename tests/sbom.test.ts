@@ -8,7 +8,11 @@ const run = promisify(execFile);
 describe("release SBOM", () => {
   it("contains browser runtime and pinned external deployment components", async () => {
     await run("node", ["scripts/generate-sbom.mjs"]);
-    const bom = JSON.parse(await readFile("sbom.cdx.json", "utf8"));
+    const first = await readFile("sbom.cdx.json", "utf8");
+    await run("node", ["scripts/generate-sbom.mjs"]);
+    const second = await readFile("sbom.cdx.json", "utf8");
+    expect(second).toBe(first);
+    const bom = JSON.parse(second);
     const byName = new Map(bom.components.map((component: { name: string }) => [component.name, component]));
     const byPurl = new Map(bom.components.map((component: { purl?: string }) => [component.purl, component]));
 
