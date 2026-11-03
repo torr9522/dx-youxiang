@@ -104,6 +104,13 @@ describe("mail workspace", () => {
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/mailboxes" && init?.method === "POST" && init.body === JSON.stringify({ localPart: "created", domainId: 2, note: "" }))).toBe(true));
   });
+
+  it("opens the message stage when launched for a selected mailbox", async () => {
+    render(<MailWorkspacePage initialMailboxId={7} onManage={() => undefined} />);
+    await screen.findByText(message.subject);
+    expect(screen.getByLabelText("邮件列表").className).toContain("flex");
+    expect(screen.getByLabelText("邮箱列表").className).toContain("hidden");
+  });
 });
 
 describe("clipboard fallback", () => {

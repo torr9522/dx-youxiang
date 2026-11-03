@@ -27,7 +27,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
   const [order] = useState("desc");
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(0);
-  const [mobileStage, setMobileStage] = useState<MobileStage>("mailboxes");
+  const [mobileStage, setMobileStage] = useState<MobileStage>(initialMailboxId ? "messages" : "mailboxes");
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
