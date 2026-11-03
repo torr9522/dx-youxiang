@@ -33,10 +33,25 @@ describe("Stalwart account provisioning", () => {
         ] }), { status: 200 });
     }));
 
-    await expect(new StalwartClient(config).listMessages("acc-a", { query: "needle", field: "subject", position: 0, limit: 25 })).resolves.toMatchObject({ total: 1 });
+    await expect(new StalwartClient(config).listMessages("acc-a", { query: "needle", field: "subject", read: "unread", position: 0, limit: 25 })).resolves.toMatchObject({ total: 1 });
     expect(payloads[0].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { role: "inbox" } });
-    expect(payloads[1].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { inMailbox: "inbox-a", subject: "needle" }, position: 0, limit: 25 });
+    expect(payloads[1].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { inMailbox: "inbox-a", subject: "needle", notKeyword: "$seen" }, position: 0, limit: 25 });
     expect(payloads[1].methodCalls[1][1].accountId).toBe("acc-a");
+  });
+
+  it("combines read-state filters with the selected account inbox", async () => {
+    const payloads: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      payloads.push(payload);
+      const tag = payload.methodCalls[0][2];
+      return tag === "inbox-query"
+        ? new Response(JSON.stringify({ methodResponses: [["Mailbox/query", { ids: ["inbox-a"] }, tag]] }), { status: 200 })
+        : new Response(JSON.stringify({ methodResponses: [["Email/query", { ids: [], total: 0, position: 0 }, "eq"], ["Email/get", { list: [] }, "eg"]] }), { status: 200 });
+    }));
+    const client = new StalwartClient(config);
+    await client.listMessages("acc-a", { read: "read" });
+    expect(payloads[1].methodCalls[0][1].filter).toEqual({ inMailbox: "inbox-a", hasKeyword: "$seen" });
   });
 
   it("creates a real user with receive enabled and authentication/send disabled", async () => {

@@ -333,11 +333,12 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     const input = parse(z.object({
       q: z.string().max(256).optional(),
       field: z.enum(["text", "from", "subject", "body"]).default("text"),
+      read: z.enum(["all", "unread", "read"]).default("all"),
       position: queryInteger(0, 0, Number.MAX_SAFE_INTEGER),
       limit: queryInteger(50, 1, 100),
       order: z.enum(["asc", "desc"]).default("desc"),
     }), req.query);
-    res.json(await stalwart.listMessages(row.stalwart_account_id, { query: input.q, field: input.field, position: input.position, limit: input.limit, ascending: input.order === "asc" }));
+    res.json(await stalwart.listMessages(row.stalwart_account_id, { query: input.q, field: input.field, read: input.read, position: input.position, limit: input.limit, ascending: input.order === "asc" }));
   });
 
   app.get("/api/mailboxes/:id/messages/:emailId", async (req, res) => {

@@ -85,6 +85,9 @@ describe("mail workspace", () => {
     await user.type(messageSearch, "验证码");
     await user.keyboard("{Enter}");
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("q=%E9%AA%8C%E8%AF%81%E7%A0%81"))).toBe(true));
+
+    await user.selectOptions(screen.getByLabelText("阅读状态"), "unread");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("read=unread") && String(url).includes("position=0"))).toBe(true));
   });
 
   it("creates a mailbox through the production API contract", async () => {

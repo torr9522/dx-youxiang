@@ -7,6 +7,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 ### Changed
 
 - Keep mailbox addresses on one truncated mobile line while preserving full-value copy actions across inbox, management and dialog views
+- Add real server-side Inbox read/unread filters that compose with JMAP search, totals and pagination
 
 ## [0.1.1] - 2026-11-03
 

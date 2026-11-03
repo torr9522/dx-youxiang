@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Inbox, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Inbox, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import { api, type Domain, type Mailbox, type MessageDetail, type MessageSummary } from "../api";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
 import { copyText } from "../lib/clipboard";
@@ -7,9 +7,10 @@ import { copyText } from "../lib/clipboard";
 const PAGE_SIZE = 50;
 type MessagePage = { list: MessageSummary[]; total: number; position: number };
 type MobileStage = "mailboxes" | "messages" | "detail";
+type ReadFilter = "all" | "unread" | "read";
 
-function messagesPath(mailboxId: number, position: number, query: string, field: string, order: string) {
-  const params = new URLSearchParams({ q: query, field, order, position: String(position), limit: String(PAGE_SIZE) });
+function messagesPath(mailboxId: number, position: number, query: string, field: string, read: ReadFilter, order: string) {
+  const params = new URLSearchParams({ q: query, field, read, order, position: String(position), limit: String(PAGE_SIZE) });
   return `/api/mailboxes/${mailboxId}/messages?${params}`;
 }
 
@@ -22,6 +23,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
   const [selectedMessage, setSelectedMessage] = useState<MessageDetail | null>(null);
   const [messageSearch, setMessageSearch] = useState("");
   const [searchField, setSearchField] = useState("text");
+  const [readFilter, setReadFilter] = useState<ReadFilter>("all");
   const [order] = useState("desc");
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(0);
@@ -39,11 +41,11 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     window.setTimeout(() => setToast(""), 1600);
   };
 
-  const loadMessages = async (mailboxId: number, nextPosition = 0, query = messageSearch, field = searchField, nextOrder = order) => {
+  const loadMessages = async (mailboxId: number, nextPosition = 0, query = messageSearch, field = searchField, read = readFilter, nextOrder = order) => {
     const currentRequest = ++requestId.current;
     setError("");
     try {
-      const page = await api<MessagePage>(messagesPath(mailboxId, nextPosition, query, field, nextOrder));
+      const page = await api<MessagePage>(messagesPath(mailboxId, nextPosition, query, field, read, nextOrder));
       if (currentRequest !== requestId.current) return;
       setMessages(page.list);
       setTotal(page.total);
@@ -60,7 +62,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     const next = rows.find((row) => row.id === preferredId) ?? rows[0] ?? null;
     if (next && next.id !== selectedMailboxId) {
       setSelectedMailboxId(next.id);
-      await loadMessages(next.id, 0, "", "text", "desc");
+      await loadMessages(next.id, 0, "", "text", "all", "desc");
     } else if (!next) {
       setSelectedMailboxId(null);
       setMessages([]);
@@ -82,7 +84,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
       const next = rows.find((row) => row.id === initialMailboxId) ?? rows[0];
       if (next) {
         setSelectedMailboxId(next.id);
-        await loadMessages(next.id, 0, "", "text", "desc");
+        await loadMessages(next.id, 0, "", "text", "all", "desc");
       }
     }).catch((caught) => active && setError((caught as Error).message));
     return () => { active = false; requestId.current += 1; };
@@ -94,9 +96,10 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
     setSelectedMailboxId(mailbox.id);
     setMessageSearch("");
     setSearchField("text");
+    setReadFilter("all");
     setSelectedMessage(null);
     setMobileStage("messages");
-    await loadMessages(mailbox.id, 0, "", "text", "desc");
+    await loadMessages(mailbox.id, 0, "", "text", "all", "desc");
   };
 
   const openMessage = async (message: MessageSummary) => {
@@ -169,9 +172,13 @@ export function MailWorkspacePage({ initialMailboxId, onManage }: { initialMailb
           <div className="min-w-0 flex-1"><div title={selectedMailbox?.address} className="truncate text-sm font-semibold text-slate-900">{selectedMailbox?.address ?? "选择邮箱"}</div><div className="mt-0.5 text-xs text-slate-500">{total} 封邮件</div></div>
           {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void loadMessages(selectedMailboxId, position)} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
         </div>
-        <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0); }}>
-          <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} /><input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)} placeholder="搜索当前邮箱" aria-label="搜索当前邮箱" className="form-control h-9 w-full pl-9 pr-3 text-sm" /></div>
-          <select title="搜索范围" aria-label="搜索范围" value={searchField} onChange={(event) => setSearchField(event.target.value)} className="form-control h-9 max-w-24 px-2 text-xs"><option value="text">全部</option><option value="from">发件人</option><option value="subject">主题</option><option value="body">正文</option></select>
+        <form className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2" onSubmit={(event) => { event.preventDefault(); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0); }}>
+          <div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} /><input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)} placeholder="搜索当前邮箱" aria-label="搜索当前邮箱" className="form-control h-9 w-full min-w-0 pl-9 pr-3 text-sm" /></div>
+          <button aria-label="执行邮件搜索" className="btn-secondary focus-ring grid h-9 w-9 place-items-center p-0"><Search size={15} /></button>
+          <div className="col-span-2 flex min-w-0 items-center justify-between gap-2">
+            <select title="搜索范围" aria-label="搜索范围" value={searchField} onChange={(event) => setSearchField(event.target.value)} className="form-control h-8 min-w-0 px-2 text-xs"><option value="text">搜索全部</option><option value="from">发件人</option><option value="subject">主题</option><option value="body">正文</option></select>
+            <label className="relative min-w-0"><ListFilter className="pointer-events-none absolute left-2.5 top-2 text-slate-400" size={14} /><span className="sr-only">阅读状态</span><select aria-label="阅读状态" value={readFilter} onChange={(event) => { const next = event.target.value as ReadFilter; setReadFilter(next); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, messageSearch, searchField, next); }} className="form-control h-8 min-w-0 pl-8 pr-2 text-xs"><option value="all">全部</option><option value="unread">未读</option><option value="read">已读</option></select></label>
+          </div>
         </form>
       </div>
       {error && <div role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
