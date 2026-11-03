@@ -2,7 +2,7 @@
 
 Dx 邮箱 (`dx-youxiang`) is a receive-only, single-administrator mailbox console for [Stalwart Mail Server](https://stalw.art/). It creates real Stalwart users, keeps every Inbox isolated, and lets the administrator selectively enable IMAP without exposing Stalwart administration credentials to the browser.
 
-Latest stable version: `v0.1.1`.
+Latest stable version: `v0.1.2`.
 
 ## What it provides
 
@@ -37,7 +37,7 @@ The installer asks only for the mail domain, mail hostname, and administrator pa
 Install the latest stable release with:
 
 ```sh
-apt-get update && apt-get install -y ca-certificates curl tar && bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.1/install.sh)
+apt-get update && apt-get install -y ca-certificates curl tar && bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.2/install.sh)
 ```
 
 See [Deployment](docs/DEPLOYMENT.md), [Architecture](docs/ARCHITECTURE.md), [Operations](docs/OPERATIONS.md), and [Backup and restore](docs/BACKUP_RESTORE.md) before using the server for important mail.

@@ -1,6 +1,6 @@
 {
   "name": "dx-youxiang",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "A receive-only, single-admin mailbox management hub for Stalwart Mail Server.",
   "license": "MIT",
