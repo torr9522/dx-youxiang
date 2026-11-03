@@ -6,6 +6,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Added
 
+- Unified light visual system with white surfaces, blue primary actions, blue selection states, shared controls, restrained borders and responsive dialogs across every administrator page
 - API-backed batch mailbox creation with numeric ranges, editable per-line prefixes, a 100-account safety limit, duplicate/existing-address handling and per-item results
 - Server-validated mailbox selection and batch deletion with one confirmation, per-account cleanup results and retryable failures
 - Modern light mail workspace with a desktop three-column layout and mobile mailbox-to-message navigation

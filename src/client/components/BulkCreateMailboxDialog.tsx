@@ -55,38 +55,38 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
 
   return <Modal title="批量创建邮箱" onClose={onClose}>
     <form onSubmit={submit}>
-      <div className="grid grid-cols-2 rounded-md bg-stone-100 p-1" aria-label="创建模式">
-        <button type="button" onClick={() => setMode("range")} className={`h-9 rounded text-sm font-medium ${mode === "range" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}>范围创建</button>
-        <button type="button" onClick={() => setMode("manual")} className={`h-9 rounded text-sm font-medium ${mode === "manual" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}>逐行自定义</button>
+      <div className="grid grid-cols-2 rounded-md bg-slate-100 p-1" aria-label="创建模式">
+        <button type="button" onClick={() => setMode("range")} className={`focus-ring h-9 rounded text-sm font-medium ${mode === "range" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>范围创建</button>
+        <button type="button" onClick={() => setMode("manual")} className={`focus-ring h-9 rounded text-sm font-medium ${mode === "manual" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}>逐行自定义</button>
       </div>
 
       {mode === "range" ? <div className="mt-4 grid grid-cols-2 gap-3">
-        <label className="text-sm font-medium text-stone-700">起始编号<input inputMode="numeric" value={start} onChange={(event) => setStart(event.target.value)} className="focus-ring mt-1.5 h-11 w-full rounded-md border border-stone-300 px-3" /></label>
-        <label className="text-sm font-medium text-stone-700">结束编号<input inputMode="numeric" value={end} onChange={(event) => setEnd(event.target.value)} className="focus-ring mt-1.5 h-11 w-full rounded-md border border-stone-300 px-3" /></label>
+        <label className="text-sm font-medium text-slate-700">起始编号<input inputMode="numeric" value={start} onChange={(event) => setStart(event.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
+        <label className="text-sm font-medium text-slate-700">结束编号<input inputMode="numeric" value={end} onChange={(event) => setEnd(event.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
       </div> : <div className="mt-4 space-y-2">
         {rows.map((row, index) => <div key={row.id} className="flex items-center gap-2">
           <label className="sr-only" htmlFor={`bulk-local-${row.id}`}>邮箱前缀 {index + 1}</label>
-          <input id={`bulk-local-${row.id}`} value={row.value} onChange={(event) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item))} placeholder={`前缀 ${index + 1}`} className="focus-ring h-11 min-w-0 flex-1 rounded-md border border-stone-300 px-3" />
-          <span className="max-w-[45%] break-all text-sm text-stone-500">@{defaultDomain?.name ?? "未配置"}</span>
+          <input id={`bulk-local-${row.id}`} value={row.value} onChange={(event) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item))} placeholder={`前缀 ${index + 1}`} className="form-control h-11 min-w-0 flex-1 px-3" />
+          <span className="max-w-[45%] break-all text-sm text-slate-500">@{defaultDomain?.name ?? "未配置"}</span>
           <button type="button" disabled={rows.length === 1} onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label={`删除第 ${index + 1} 行`} className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-md text-red-600 hover:bg-red-50 disabled:opacity-30"><Trash2 size={17} /></button>
         </div>)}
-        <button type="button" disabled={rows.length >= BULK_LIMIT} onClick={() => setRows((current) => [...current, { id: nextId.current++, value: "" }])} className="focus-ring flex h-10 items-center gap-2 rounded-md border border-stone-300 px-3 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-40"><Plus size={16} />添加一行</button>
+        <button type="button" disabled={rows.length >= BULK_LIMIT} onClick={() => setRows((current) => [...current, { id: nextId.current++, value: "" }])} className="btn-secondary focus-ring h-10 gap-2 px-3 text-sm"><Plus size={16} />添加一行</button>
       </div>}
 
-      <div className="mt-4 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
-        <div className="flex justify-between text-stone-600"><span>默认域名 @{defaultDomain?.name ?? "未配置"}</span><span>预计 {values.length} 个 / 上限 {BULK_LIMIT}</span></div>
-        {preview.length > 0 && <div className="mt-2 max-h-28 space-y-1 overflow-auto text-xs text-stone-700">{preview.map((address, index) => <div key={`${address}-${index}`}>{address}</div>)}{values.length > preview.length && <div>还有 {values.length - preview.length} 个...</div>}</div>}
+      <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+        <div className="flex justify-between text-slate-600"><span>默认域名 @{defaultDomain?.name ?? "未配置"}</span><span>预计 {values.length} 个 / 上限 {BULK_LIMIT}</span></div>
+        {preview.length > 0 && <div className="mt-2 max-h-28 space-y-1 overflow-auto text-xs text-slate-700">{preview.map((address, index) => <div key={`${address}-${index}`}>{address}</div>)}{values.length > preview.length && <div>还有 {values.length - preview.length} 个...</div>}</div>}
       </div>
       {validationError && <p role="alert" className="mt-3 text-sm text-red-700">{validationError}</p>}
       {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-      {result && <div className="mt-4 rounded-md border border-stone-200 p-3 text-sm" role="status">
-        <p className="font-medium text-stone-900">处理完成：总计 {result.total} 个</p>
-        <p className="mt-1 text-stone-600">成功 {result.succeeded}，已存在跳过 {result.skippedExisting}，本批重复 {result.duplicates}，失败 {result.failed}</p>
+      {result && <div className="mt-4 rounded-md border border-slate-200 p-3 text-sm" role="status">
+        <p className="font-medium text-slate-900">处理完成：总计 {result.total} 个</p>
+        <p className="mt-1 text-slate-600">成功 {result.succeeded}，已存在跳过 {result.skippedExisting}，本批重复 {result.duplicates}，失败 {result.failed}</p>
         {result.results.some((item) => item.status === "failed") && <div className="mt-2 max-h-24 overflow-auto text-xs text-red-700">{result.results.filter((item) => item.status === "failed").map((item) => <div key={item.address}>{item.address || "空前缀"}：{item.reason}</div>)}</div>}
       </div>}
       <div className="mt-5 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="h-10 rounded-md border border-stone-300 px-4 text-sm">关闭</button>
-        <button disabled={busy || !!validationError} className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-medium text-white disabled:opacity-40">{busy ? "正在创建..." : "开始创建"}</button>
+        <button type="button" onClick={onClose} className="btn-secondary focus-ring h-10 px-4 text-sm">关闭</button>
+        <button disabled={busy || !!validationError} className="btn-primary focus-ring h-10 px-4 text-sm">{busy ? "正在创建..." : "开始创建"}</button>
       </div>
     </form>
   </Modal>;
