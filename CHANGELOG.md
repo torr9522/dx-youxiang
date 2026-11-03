@@ -4,6 +4,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-03
+
 ### Added
 
 - Add an administrator-only translation settings page with empty provider defaults, encrypted API key storage, explicit connection testing and cache management
