@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest tagged release. This pre-release `0.1.0` line must not be described as stable until the deployment acceptance checklist passes.
+Security fixes are provided for the latest tagged stable release.
 
 ## Reporting
 

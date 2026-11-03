@@ -104,6 +104,21 @@ beforeAll(async () => {
 afterAll(() => { context.db.close(); rmSync(temp, { recursive: true, force: true }); });
 
 describe("API access control", () => {
+  it("distinguishes process health from dependency readiness", async () => {
+    await request(context.app).get("/healthz").expect(200, { status: "ok", component: "web" });
+    const readiness = await request(context.app).get("/readyz").expect(503);
+    expect(readiness.body).toMatchObject({
+      status: "degraded",
+      checks: {
+        web: { ok: true },
+        database: { ok: true },
+        jmap: { ok: true },
+        stalwart: { ok: true },
+        tls: { ok: false },
+      },
+    });
+  });
+
   it("requires authentication", async () => {
     await request(context.app).get("/api/mailboxes").expect(401);
   });
