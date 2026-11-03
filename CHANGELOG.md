@@ -4,6 +4,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+- Bound translation-provider concurrency, parallelize independent chunks, deduplicate concurrent requests for one message, and expose non-sensitive server timing metrics.
+
 ## [0.1.3] - 2026-11-03
 
 ### Added

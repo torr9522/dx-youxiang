@@ -405,6 +405,13 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
         html: presented.html,
         plain: presented.plain,
       });
+      res.set("Server-Timing", [
+        `translate;dur=${result.metrics.totalMs}`,
+        `extract;dur=${result.metrics.textExtractionMs}`,
+        `provider;dur=${result.metrics.providerWallMs}`,
+        `mapping;dur=${result.metrics.domMappingMs}`,
+        `cache;dur=${result.metrics.cacheWriteMs}`,
+      ].join(", "));
       audit(db, req, "message.translate", "mailbox", String(row.id), { emailId, cached: result.cached, partial: result.partial });
       res.json(result);
     } catch (error) {

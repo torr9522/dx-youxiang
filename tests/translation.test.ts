@@ -88,4 +88,60 @@ describe("translation storage and node mapping", () => {
     expect(db.db.prepare("SELECT COUNT(*) count FROM translation_cache").get()).toEqual({ count: 0 });
     db.close();
   });
+
+  it("bounds provider concurrency, parallelizes chunks and reports safe timings", async () => {
+    const db = database();
+    const secret = "s".repeat(48);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", apiKey: "fictional-key", model: "model-a", targetLanguage: "zh-CN", enabled: false });
+    let connection = true;
+    let active = 0;
+    let maximumActive = 0;
+    let translationCalls = 0;
+    const provider = { complete: async (_config: unknown, _instructions: string, input: string) => {
+      if (connection) { connection = false; return "DX_TRANSLATION_OK"; }
+      translationCalls += 1;
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 35));
+      active -= 1;
+      const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: `译文 ${node.text}` })) });
+    } };
+    await testTranslationConnection(db, secret, provider);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
+    const paragraphs = Array.from({ length: 4 }, (_, index) => `<p>${index} ${"English account notice. ".repeat(150)}</p>`).join("");
+    const result = await translateMessage({ db, secret, provider, mailboxId: 1, accountId: "account-a", emailId: "parallel", html: paragraphs, plain: "" });
+    expect(result.partial).toBe(false);
+    expect(result.metrics.chunkCount).toBeGreaterThan(1);
+    expect(result.metrics.apiRequestCount).toBe(translationCalls);
+    expect(result.metrics.providerWallMs).toBeGreaterThan(0);
+    expect(maximumActive).toBe(2);
+    expect(result.metrics.providerWallMs).toBeLessThan(translationCalls * 30);
+    const cached = await translateMessage({ db, secret, provider, mailboxId: 1, accountId: "account-a", emailId: "parallel", html: paragraphs, plain: "" });
+    expect(cached.metrics).toMatchObject({ cacheHit: true, apiRequestCount: 0, chunkCount: 0 });
+    db.close();
+  });
+
+  it("deduplicates concurrent translation requests for the same message", async () => {
+    const db = database();
+    const secret = "s".repeat(48);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", apiKey: "fictional-key", model: "model-a", targetLanguage: "zh-CN", enabled: false });
+    let connection = true;
+    let translationCalls = 0;
+    const provider = { complete: async (_config: unknown, _instructions: string, input: string) => {
+      if (connection) { connection = false; return "DX_TRANSLATION_OK"; }
+      translationCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: `译文 ${node.text}` })) });
+    } };
+    await testTranslationConnection(db, secret, provider);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
+    const options = { db, secret, provider, mailboxId: 1, accountId: "account-a", emailId: "dedupe", html: "<p>This is one English account notice.</p>", plain: "" };
+    const [first, second] = await Promise.all([translateMessage(options), translateMessage(options)]);
+    expect(first.html).toBe(second.html);
+    expect(translationCalls).toBe(1);
+    expect(db.db.prepare("SELECT COUNT(*) count FROM translation_cache WHERE email_id='dedupe'").get()).toEqual({ count: 1 });
+    db.close();
+  });
 });
