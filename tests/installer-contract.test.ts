@@ -91,4 +91,14 @@ describe("native installer contracts", () => {
     const bootstrap = await readFile("install.sh", "utf8");
     expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.0}");
   });
+
+  it("waits for bounded application readiness before accepting or rolling back an upgrade", async () => {
+    const upgrade = await readFile("scripts/upgrade.sh", "utf8");
+
+    expect(upgrade).toContain("wait_ready()");
+    expect(upgrade).toContain('test "$wait_attempt" -lt 45 || return 1');
+    expect(upgrade).toContain("sleep 1");
+    expect(upgrade).toContain("if ! wait_ready; then");
+    expect(upgrade.match(/if ! wait_ready; then/g)).toHaveLength(2);
+  });
 });

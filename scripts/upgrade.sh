@@ -44,10 +44,24 @@ ln -sfn "$release" "$base/current.next"
 mv -Tf "$base/current.next" "$base/current"
 systemctl restart dx-youxiang
 app_port=$(sed -n 's/^PORT=//p' /etc/dx-youxiang/app.env | tail -1)
-if ! curl -fsS --max-time 10 "http://127.0.0.1:${app_port}/readyz" >/dev/null; then
+
+wait_ready() {
+  wait_attempt=0
+  while ! curl -fsS --max-time 10 "http://127.0.0.1:${app_port}/readyz" >/dev/null 2>&1; do
+    wait_attempt=$((wait_attempt + 1))
+    test "$wait_attempt" -lt 45 || return 1
+    sleep 1
+  done
+}
+
+if ! wait_ready; then
   ln -sfn "$previous" "$base/current.next"
   mv -Tf "$base/current.next" "$base/current"
   systemctl restart dx-youxiang
+  if ! wait_ready; then
+    echo "upgrade failed and the previous release did not recover readiness" >&2
+    exit 1
+  fi
   echo "upgrade failed readiness check and was rolled back" >&2
   exit 1
 fi

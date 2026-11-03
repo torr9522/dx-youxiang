@@ -29,6 +29,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ### Fixed
 
+- Wait for bounded application readiness during in-place upgrades and verify that the previous release recovers before reporting a successful rollback
 - Distinguish Let's Encrypt staging certificates from production certificates in readiness instead of treating every non-self-signed certificate as production-ready
 - Replace typed-address mailbox deletion confirmation with one explicit irreversible-action dialog while retaining server-side account resolution
 - Preserve numeric application mailbox IDs when adding Stalwart inbox statistics
