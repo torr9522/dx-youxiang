@@ -8,6 +8,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 - Keep mailbox addresses on one truncated mobile line while preserving full-value copy actions across inbox, management and dialog views
 - Add real server-side Inbox read/unread filters that compose with JMAP search, totals and pagination
+- Replace crowded mobile header icons with a labelled navigation menu and add iPhone safe-area, keyboard-safe modal and narrow bulk-row handling
+- Refine mobile message hierarchy, complete timestamps, two-line subjects, attachment metadata and detail-to-list scroll restoration
 
 ## [0.1.1] - 2026-11-03
 

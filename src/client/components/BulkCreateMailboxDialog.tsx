@@ -64,11 +64,11 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
         <label className="text-sm font-medium text-slate-700">起始编号<input inputMode="numeric" value={start} onChange={(event) => setStart(event.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
         <label className="text-sm font-medium text-slate-700">结束编号<input inputMode="numeric" value={end} onChange={(event) => setEnd(event.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
       </div> : <div className="mt-4 space-y-2">
-        {rows.map((row, index) => <div key={row.id} className="flex items-center gap-2">
+        {rows.map((row, index) => <div key={row.id} className="bulk-manual-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 sm:flex">
           <label className="sr-only" htmlFor={`bulk-local-${row.id}`}>邮箱前缀 {index + 1}</label>
           <input id={`bulk-local-${row.id}`} value={row.value} onChange={(event) => setRows((current) => current.map((item) => item.id === row.id ? { ...item, value: event.target.value } : item))} placeholder={`前缀 ${index + 1}`} className="form-control h-11 min-w-0 flex-1 px-3" />
-          <span title={defaultDomain?.name} className="max-w-[40%] truncate text-sm text-slate-500">@{defaultDomain?.name ?? "未配置"}</span>
-          <button type="button" disabled={rows.length === 1} onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label={`删除第 ${index + 1} 行`} className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-md text-red-600 hover:bg-red-50 disabled:opacity-30"><Trash2 size={17} /></button>
+          <span title={defaultDomain?.name} className="min-w-0 truncate text-xs text-slate-500 sm:max-w-[40%] sm:text-sm">@{defaultDomain?.name ?? "未配置"}</span>
+          <button type="button" disabled={rows.length === 1} onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))} aria-label={`删除第 ${index + 1} 行`} className="focus-ring col-start-2 row-span-2 row-start-1 grid h-10 w-10 shrink-0 place-items-center rounded-md text-red-600 hover:bg-red-50 disabled:opacity-30 sm:col-auto sm:row-auto"><Trash2 size={17} /></button>
         </div>)}
         <button type="button" disabled={rows.length >= BULK_LIMIT} onClick={() => setRows((current) => [...current, { id: nextId.current++, value: "" }])} className="btn-secondary focus-ring h-10 gap-2 px-3 text-sm"><Plus size={16} />添加一行</button>
       </div>}

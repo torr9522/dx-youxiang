@@ -65,6 +65,7 @@ describe("mail workspace", () => {
 
     expect(await screen.findByText("482731")).toBeTruthy();
     expect(screen.getByText("notice.txt")).toBeTruthy();
+    expect(screen.getByText("12 B")).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/mailboxes/7/messages/m1/read",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ read: true }) }),

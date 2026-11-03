@@ -46,7 +46,7 @@ export function MailboxesPage({ onMailbox }: { onMailbox: (id: number) => void }
     {dialog === "password" && selected && <PasswordDialog mailbox={selected} onClose={() => setDialog(null)} />}
     {dialog === "delete" && selected && <DeleteDialog mailbox={selected} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
     {bulkDeleteOpen && <BulkDeleteMailboxDialog mailboxes={selectedRows} onClose={() => setBulkDeleteOpen(false)} onChanged={(failedIds) => { setSelectedIds(new Set(failedIds)); void load(); }} />}
-    {copiedAddress && <div role="status" className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white">邮箱地址已复制</div>}
+    {copiedAddress && <div role="status" className="mobile-toast fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white">邮箱地址已复制</div>}
   </div>;
 }
 
