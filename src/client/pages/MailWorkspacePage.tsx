@@ -16,7 +16,18 @@ function messagesPath(mailboxId: number, position: number, query: string, field:
 
 type TranslatedMessage = { html: string; plain: string; cached: boolean; partial: boolean };
 
-export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { initialMailboxId?: number; onManage: () => void; onSettings?: () => void }) {
+type MailWorkspaceProps = {
+  initialMailboxId?: number;
+  initialMessageId?: string;
+  onMailboxRoute?: (mailboxId: number) => void;
+  onMessageRoute?: (mailboxId: number, emailId: string) => void;
+  onMessageListRoute?: (mailboxId: number, replace?: boolean) => void;
+  onInboxRoute?: () => void;
+  onManage: () => void;
+  onSettings?: () => void;
+};
+
+export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailboxRoute, onMessageRoute, onMessageListRoute, onInboxRoute, onManage, onSettings }: MailWorkspaceProps) {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [mailboxSearch, setMailboxSearch] = useState("");
@@ -29,7 +40,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
   const [order] = useState("desc");
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(0);
-  const [mobileStage, setMobileStage] = useState<MobileStage>(initialMailboxId ? "messages" : "mailboxes");
+  const [mobileStage, setMobileStage] = useState<MobileStage>(initialMessageId ? "detail" : initialMailboxId ? "messages" : "mailboxes");
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showRemoteImages, setShowRemoteImages] = useState(false);
@@ -40,6 +51,9 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const requestId = useRef(0);
+  const detailRequestId = useRef(0);
+  const routeReady = useRef(false);
+  const appliedRoute = useRef("");
   const messageListRef = useRef<HTMLDivElement>(null);
   const mailBodyRef = useRef<HTMLDivElement>(null);
   const messageScrollTop = useRef(0);
@@ -47,6 +61,12 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
   const selectedMailbox = mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
   const displayHtml = translationMode === "translated" && translatedMessage ? translatedMessage.html : selectedMessage?.html ?? "";
   const displayPlain = translationMode === "translated" && translatedMessage ? translatedMessage.plain : selectedMessage?.plain ?? "";
+
+  const restoreMessageScroll = () => {
+    window.requestAnimationFrame(() => {
+      if (messageListRef.current) messageListRef.current.scrollTop = messageScrollTop.current;
+    });
+  };
 
   const showToast = (message: string) => {
     setToast(message);
@@ -67,6 +87,39 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
       setTranslationMode("original");
     } catch (caught) {
       if (currentRequest === requestId.current) setError((caught as Error).message);
+    }
+  };
+
+  const loadMessageDetail = async (mailboxId: number, emailId: string) => {
+    const currentRequest = ++detailRequestId.current;
+    setDetailLoading(true);
+    setShowRemoteImages(false);
+    setRemoteImageStatus("idle");
+    setTranslatedMessage(null);
+    setTranslationMode("original");
+    setError("");
+    try {
+      const detail = await api<MessageDetail>(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(emailId)}`);
+      if (currentRequest !== detailRequestId.current) return;
+      setSelectedMessage(detail);
+      setMobileStage("detail");
+      if (!detail.keywords?.["$seen"]) {
+        await api(`/api/mailboxes/${mailboxId}/messages/${encodeURIComponent(emailId)}/read`, { method: "PATCH", body: JSON.stringify({ read: true }) });
+        const keywords = { ...detail.keywords, "$seen": true };
+        setSelectedMessage((current) => current?.id === emailId ? { ...current, keywords } : current);
+        setMessages((current) => current.map((item) => item.id === emailId ? { ...item, keywords: { ...item.keywords, "$seen": true } } : item));
+        if (readFilter === "unread") {
+          setMessages((current) => current.filter((item) => item.id !== emailId));
+          setTotal((current) => Math.max(0, current - 1));
+        }
+      }
+    } catch (caught) {
+      if (currentRequest !== detailRequestId.current) return;
+      setSelectedMessage(null);
+      setMobileStage("detail");
+      setError((caught as Error).message);
+    } finally {
+      if (currentRequest === detailRequestId.current) setDetailLoading(false);
     }
   };
 
@@ -95,18 +148,84 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
       if (!active) return;
       setMailboxes(rows);
       setDomains(domainRows);
-      const next = rows.find((row) => row.id === initialMailboxId) ?? rows[0];
+      const requested = initialMailboxId === undefined ? undefined : rows.find((row) => row.id === initialMailboxId);
+      if (initialMailboxId !== undefined && !requested) {
+        setSelectedMailboxId(initialMailboxId);
+        setMessages([]);
+        setTotal(0);
+        setSelectedMessage(null);
+        setMobileStage(initialMessageId ? "detail" : "messages");
+        setError("邮箱不存在或已被删除");
+        appliedRoute.current = `${initialMailboxId}\0${initialMessageId ?? ""}`;
+        routeReady.current = true;
+        return;
+      }
+      const next = requested ?? rows[0];
       if (next) {
         setSelectedMailboxId(next.id);
         await loadMessages(next.id, 0, "", "text", "all", "desc");
+        if (initialMessageId) await loadMessageDetail(next.id, initialMessageId);
       }
+      appliedRoute.current = `${initialMailboxId ?? ""}\0${initialMessageId ?? ""}`;
+      routeReady.current = true;
     }).catch((caught) => active && setError((caught as Error).message));
     return () => { active = false; requestId.current += 1; };
     // Initial data is intentionally loaded once; later selection is user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!routeReady.current) return;
+    const routeKey = `${initialMailboxId ?? ""}\0${initialMessageId ?? ""}`;
+    if (appliedRoute.current === routeKey) return;
+    appliedRoute.current = routeKey;
+    queueMicrotask(() => {
+      if (appliedRoute.current !== routeKey) return;
+      if (initialMailboxId === undefined) {
+        detailRequestId.current += 1;
+        setSelectedMessage(null);
+        setTranslatedMessage(null);
+        setTranslationMode("original");
+        setMobileStage("mailboxes");
+        return;
+      }
+      const mailbox = mailboxes.find((row) => row.id === initialMailboxId);
+      if (!mailbox) {
+        setSelectedMailboxId(initialMailboxId);
+        setMessages([]);
+        setTotal(0);
+        setSelectedMessage(null);
+        setMobileStage(initialMessageId ? "detail" : "messages");
+        setError("邮箱不存在或已被删除");
+        return;
+      }
+      void (async () => {
+        if (selectedMailboxId !== mailbox.id) {
+          setSelectedMailboxId(mailbox.id);
+          setMessageSearch("");
+          setSearchField("text");
+          setReadFilter("all");
+          await loadMessages(mailbox.id, 0, "", "text", "all", "desc");
+        }
+        if (appliedRoute.current !== routeKey) return;
+        if (initialMessageId) await loadMessageDetail(mailbox.id, initialMessageId);
+        else {
+          detailRequestId.current += 1;
+          setSelectedMessage(null);
+          setTranslatedMessage(null);
+          setTranslationMode("original");
+          setMobileStage("messages");
+          restoreMessageScroll();
+        }
+      })();
+    });
+    // Route changes are applied explicitly; loader functions intentionally retain current list state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMailboxId, initialMessageId, mailboxes.length]);
+
   const selectMailbox = async (mailbox: Mailbox) => {
+    appliedRoute.current = `${mailbox.id}\0`;
+    onMailboxRoute?.(mailbox.id);
     setSelectedMailboxId(mailbox.id);
     setMessageSearch("");
     setSearchField("text");
@@ -120,31 +239,9 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
 
   const openMessage = async (message: MessageSummary) => {
     if (!selectedMailboxId) return;
-    setDetailLoading(true);
-    setShowRemoteImages(false);
-    setRemoteImageStatus("idle");
-    setTranslatedMessage(null);
-    setTranslationMode("original");
-    setError("");
-    try {
-      const detail = await api<MessageDetail>(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(message.id)}`);
-      setSelectedMessage(detail);
-      setMobileStage("detail");
-      if (!message.keywords?.["$seen"]) {
-        await api(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(message.id)}/read`, { method: "PATCH", body: JSON.stringify({ read: true }) });
-        const keywords = { ...detail.keywords, "$seen": true };
-        setSelectedMessage((current) => current?.id === message.id ? { ...current, keywords } : current);
-        setMessages((current) => current.map((item) => item.id === message.id ? { ...item, keywords: { ...item.keywords, "$seen": true } } : item));
-        if (readFilter === "unread") {
-          setMessages((current) => current.filter((item) => item.id !== message.id));
-          setTotal((current) => Math.max(0, current - 1));
-        }
-      }
-    } catch (caught) {
-      setError((caught as Error).message);
-    } finally {
-      setDetailLoading(false);
-    }
+    appliedRoute.current = `${selectedMailboxId}\0${message.id}`;
+    onMessageRoute?.(selectedMailboxId, message.id);
+    await loadMessageDetail(selectedMailboxId, message.id);
   };
 
   useEffect(() => {
@@ -225,8 +322,12 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
   };
 
   const returnToMessages = () => {
+    if (selectedMailboxId) {
+      appliedRoute.current = `${selectedMailboxId}\0`;
+      onMessageListRoute?.(selectedMailboxId, true);
+    }
     setMobileStage("messages");
-    window.requestAnimationFrame(() => messageListRef.current?.scrollTo({ top: messageScrollTop.current }));
+    restoreMessageScroll();
   };
 
   const deleteMessage = async () => {
@@ -236,6 +337,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
     setTranslatedMessage(null);
     setTranslationMode("original");
     setMobileStage("messages");
+    appliedRoute.current = `${selectedMailboxId}\0`;
+    onMessageListRoute?.(selectedMailboxId, true);
     await loadMessages(selectedMailboxId, position);
   };
 
@@ -268,7 +371,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
     <section aria-label="邮件列表" className={`${mobileStage === "messages" ? "flex" : "hidden"} min-h-0 flex-col border-r border-slate-200 bg-white md:flex`}>
       <div className="border-b border-slate-200 px-4 pb-3 pt-3">
         <div className="flex min-h-8 items-center gap-2">
-          <button onClick={() => setMobileStage("mailboxes")} aria-label="返回邮箱列表" className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"><ArrowLeft size={18} /></button>
+          <button onClick={() => { appliedRoute.current = "\0"; onInboxRoute?.(); setMobileStage("mailboxes"); }} aria-label="返回邮箱列表" className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"><ArrowLeft size={18} /></button>
           <div className="min-w-0 flex-1"><div title={selectedMailbox?.address} className="truncate text-sm font-semibold text-slate-900">{selectedMailbox?.address ?? "选择邮箱"}</div><div className="mt-0.5 text-xs text-slate-500">{total} 封邮件</div></div>
           {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void loadMessages(selectedMailboxId, position)} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
         </div>
@@ -299,7 +402,7 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
 
     <article aria-label="邮件详情" className={`${mobileStage === "detail" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col bg-white md:flex`}>
       {detailLoading && <div className="grid h-full place-items-center text-sm text-slate-500">正在读取邮件...</div>}
-      {!detailLoading && !selectedMessage && <div className="grid h-full place-items-center px-6 text-center text-sm text-slate-400"><div><MailOpen className="mx-auto mb-3 text-slate-300" size={34} />选择一封邮件查看正文</div></div>}
+      {!detailLoading && !selectedMessage && <div className="grid h-full place-items-center px-6 text-center text-sm text-slate-400"><div>{error ? <><MailOpen className="mx-auto mb-3 text-slate-300" size={34} /><p className="text-slate-600">{error}</p><button type="button" onClick={() => { if (selectedMailboxId) onMessageListRoute?.(selectedMailboxId, true); else onInboxRoute?.(); }} className="btn-secondary focus-ring mt-4 h-9 px-3 text-sm">返回收件箱</button></> : <><MailOpen className="mx-auto mb-3 text-slate-300" size={34} />选择一封邮件查看正文</>}</div></div>}
       {!detailLoading && selectedMessage && <>
         <header className="shrink-0 border-b border-slate-200 px-4 py-4 lg:px-6">
           <div className="flex items-start gap-3">
@@ -346,6 +449,8 @@ export function MailWorkspacePage({ initialMailboxId, onManage, onSettings }: { 
       setMailboxSearch("");
       setMobileStage("messages");
       await loadMailboxes("", created.id);
+      appliedRoute.current = `${created.id}\0`;
+      onMailboxRoute?.(created.id);
       showToast("邮箱已创建");
     }} />}
     {toast && <div role="status" className="mobile-toast fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"><Check size={15} />{toast}</div>}

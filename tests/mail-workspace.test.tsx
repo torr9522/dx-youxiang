@@ -48,6 +48,7 @@ describe("mail workspace", () => {
   });
 
   beforeEach(() => {
+    fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
   });
 
@@ -111,6 +112,35 @@ describe("mail workspace", () => {
     await screen.findByText(message.subject);
     expect(screen.getByLabelText("邮件列表").className).toContain("flex");
     expect(screen.getByLabelText("邮箱列表").className).toContain("hidden");
+  });
+
+  it("loads a message directly from a mailbox/message route", async () => {
+    render(<MailWorkspacePage initialMailboxId={7} initialMessageId="m1" onManage={() => undefined} />);
+    expect(await screen.findByText("Your code is 482731")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/mailboxes/7/messages/m1")).toBe(true);
+    expect(screen.getByLabelText("邮件详情").className).toContain("flex");
+  });
+
+  it("reports mailbox and message selections to the browser router", async () => {
+    const user = userEvent.setup();
+    const onMailboxRoute = vi.fn();
+    const onMessageRoute = vi.fn();
+    render(<MailWorkspacePage onManage={() => undefined} onMailboxRoute={onMailboxRoute} onMessageRoute={onMessageRoute} />);
+    const mailboxList = await screen.findByLabelText("邮箱列表");
+    await user.click(within(mailboxList).getByText(mailbox.address));
+    expect(onMailboxRoute).toHaveBeenCalledWith(7);
+    await user.click(await screen.findByText(message.subject));
+    expect(onMessageRoute).toHaveBeenCalledWith(7, "m1");
+  });
+
+  it("applies browser back from a message route without reloading the message list", async () => {
+    const { rerender } = render(<MailWorkspacePage initialMailboxId={7} initialMessageId="m1" onManage={() => undefined} />);
+    expect(await screen.findByText("Your code is 482731")).toBeTruthy();
+    const listCallsBefore = fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/mailboxes/7/messages?")).length;
+    rerender(<MailWorkspacePage initialMailboxId={7} onManage={() => undefined} />);
+    await waitFor(() => expect(screen.queryByText("Your code is 482731")).toBeNull());
+    expect(screen.getByLabelText("邮件列表").className).toContain("flex");
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/mailboxes/7/messages?")).length).toBe(listCallsBefore);
   });
 
   it("loads remote images only after per-message consent and can hide them again", async () => {

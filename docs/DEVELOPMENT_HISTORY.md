@@ -37,3 +37,10 @@ This record is derived from the preserved Git history. It does not invent work t
 - `v0.1.0-rc.10` records the authoritative ACME retry window and performs local no-op checks until it expires. A production-readiness review then found that Stalwart could bind public SMTP while the bootstrap certificate was still active. The next candidate adds a reboot-persistent inbound SMTP gate and opens it only after trusted readiness and an encrypted backup exist; existing-Caddy installs also use one dedicated top-level include.
 
 The rename does not intentionally alter APIs, the database schema, Stalwart account IDs, mailbox credentials, or existing mail. It changes the administrator cookie name, so browsers sign in again once.
+
+## Phase 1.7 Translation And Routing
+
+- Translation provider work is limited to two concurrent requests per process. Independent chunks can run in parallel, while duplicate requests for the same account/message/configuration share one in-flight operation.
+- A bounded private-provider benchmark used eight synthetic, non-sensitive email samples and three runs per model. The existing configured model measured 17,047 ms average, 15,413 ms P50 and 28,126 ms P90; the selected candidate measured 7,519 ms average, 7,097 ms P50 and 8,847 ms P90. Both passed the three quality suites. These are provider-specific observations, not public defaults; new installations remain unconfigured.
+- The translation prompt/cache version is `email-text-v2`. Lowercase hyphenated words such as `non-sensitive` remain translatable, machine identifiers remain protected, and incomplete node maps are rejected and retried within the existing bounded attempt count.
+- React Router browser history replaces the previous view-state navigation. Inbox, mailbox, message, mailbox-management and settings routes have stable URLs; direct authenticated deep links, safe post-login restoration, back/forward navigation and a scoped server-side SPA fallback are covered by regression tests.

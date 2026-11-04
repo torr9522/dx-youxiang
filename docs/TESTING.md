@@ -8,6 +8,8 @@ The CycloneDX gate must verify that `react`, `react-dom`, Stalwart, the private 
 
 Tests must cover authentication/CSRF, positive numeric route IDs, mailbox account binding, Inbox-only list/search/pagination, detail/attachment ownership, read state, HTML sanitization, six-character mailbox passwords and shorter rejection.
 
+Phase 1.7 routing regression includes top navigation, mailbox and message URL changes, browser back/forward, direct message URLs, authenticated deep-link restoration, rejection of external return URLs, legacy settings routes, invalid mailbox/message states, list scroll restoration, JSON API 404 responses and the scoped SPA fallback. Translation regression includes concurrency limits, in-flight deduplication, cache timings, prompt-version invalidation, mixed-language and ordinary hyphenated words, protected identifiers, complete node mapping and bounded retries for incomplete output.
+
 ## Clean Install Gate
 
 Start with newly installed Debian 12 AMD64. Use only the one-line command for an immutable RC from GitHub. Do not manually install a missing dependency or patch the server. Verify systemd enablement, reboot recovery, Caddy, trusted HTTPS/STARTTLS/IMAPS, `/healthz`, `/readyz`, backup timer, log rotation, disk threshold and outbound SMTP rejection.

@@ -43,6 +43,10 @@ Stalwart uses its recommended single-node RocksDB store with the default blob an
 - `scripts/bootstrap-stalwart.mjs`: one-time service identity, listeners, TLS and permission configuration.
 - `scripts/*.sh` and `deploy`: native lifecycle, systemd, Caddy, Certbot, nftables and backup assets.
 
+The client uses React Router with browser history for `/inbox`, `/inbox/:mailboxId`, `/inbox/:mailboxId/:messageId`, `/mailboxes`, `/settings`, and the `/settings/domains`, `/settings/audit`, and `/settings/translation` subpages. `/domains` and `/audit` remain compatible redirects. User navigation pushes history; canonical and authentication redirects replace it. A same-origin allowlist validates post-login return targets.
+
+The application server returns the SPA entry point only for this explicit route allowlist; health, API, mail-resource and unknown static paths retain their own status and content type. Route identifiers are navigation hints only. Every mailbox, message, image and attachment request remains authorized by the server-side SQLite mailbox-to-Stalwart-account mapping. Desktop routing retains the three-column workspace, while mobile routes select the mailbox, list, or detail stage without creating a second navigation model.
+
 ## Receive Flow
 
 ```text

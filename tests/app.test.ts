@@ -148,6 +148,15 @@ describe("API access control", () => {
     await request(context.app).get("/api/mailboxes").expect(401);
   });
 
+  it("does not rewrite unknown API or static paths as SPA pages", async () => {
+    const apiResponse = await request(context.app).get("/api/not-a-real-route").set("Cookie", cookie).expect(404);
+    expect(apiResponse.headers["content-type"]).toContain("application/json");
+    expect(apiResponse.body).toEqual({ error: "API 路径不存在" });
+    const staticResponse = await request(context.app).get("/not-a-real-page").expect(404);
+    expect(staticResponse.text).toContain("Cannot GET /not-a-real-page");
+    expect(staticResponse.text).not.toContain('<div id="root">');
+  });
+
   it("requires CSRF on state changes", async () => {
     await request(context.app).post("/api/auth/logout").set("Cookie", cookie).expect(403);
   });

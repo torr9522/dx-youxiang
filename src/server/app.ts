@@ -21,6 +21,7 @@ const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(
 const bulkMailboxLimit = 100;
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
+const spaRoute = /^\/(?:login|inbox(?:\/[1-9][0-9]*(?:\/[^/]+)?)?|mailboxes|settings(?:\/(?:domains|audit|translation))?|domains|audit)?\/?$/;
 
 type CertificateStatusSource = Pick<X509Certificate, "validTo" | "issuer" | "subject" | "checkHost">;
 
@@ -501,9 +502,11 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   app.get("/api/audit", (_req, res) => res.json(db.db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 200").all()));
 
+  app.use("/api", (_req, res) => res.status(404).json({ error: "API 路径不存在" }));
+
   const clientDir = path.resolve("dist/client");
   app.use(express.static(clientDir, { index: false, maxAge: config.NODE_ENV === "production" ? "1h" : 0 }));
-  app.get("/{*path}", (req, res, next) => req.path.startsWith("/api/") ? next() : res.sendFile(path.join(clientDir, "index.html")));
+  app.get(spaRoute, (_req, res) => res.sendFile(path.join(clientDir, "index.html")));
 
   app.use((error: any, req: Request, res: Response, _next: NextFunction) => {
     const status = error.status ?? (error instanceof StalwartError ? 502 : 500);
