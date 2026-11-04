@@ -4,6 +4,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-04
+
 - Bound translation-provider concurrency, parallelize independent chunks, deduplicate concurrent requests for one message, and expose non-sensitive server timing metrics.
 - Translate ordinary hyphenated English instead of protecting it as a machine identifier, reject incomplete node output with a bounded retry, and invalidate earlier translation caches by prompt version.
 - Preserve written calendar dates through placeholder protection and invalidate translations created before this protection was added.

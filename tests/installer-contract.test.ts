@@ -89,7 +89,7 @@ describe("native installer contracts", () => {
 
   it("defaults the public bootstrap installer to the stable release", async () => {
     const bootstrap = await readFile("install.sh", "utf8");
-    expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.3}");
+    expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.4}");
   });
 
   it("waits for bounded application readiness before accepting or rolling back an upgrade", async () => {
