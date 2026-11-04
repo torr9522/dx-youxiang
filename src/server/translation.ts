@@ -5,7 +5,7 @@ import { parseFragment, serialize } from "parse5";
 import type { AppDatabase } from "./db.js";
 import type { ProviderConfig, TranslationProtocol, TranslationProvider } from "./translation-provider.js";
 
-const PROMPT_VERSION = "email-text-v2";
+const PROMPT_VERSION = "email-text-v3";
 const MAX_SOURCE_BYTES = 64 * 1024;
 const MAX_NODES = 400;
 const MAX_CHUNKS = 8;
@@ -188,6 +188,8 @@ const protectedPatterns = [
   /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
   /\b(?:[A-Z0-9](?:[A-Z0-9-]{1,62})\.)+[A-Z]{2,}\b/gi,
   /(?:[$€£¥]|USD|EUR|GBP|CNY|RMB)\s?\d[\d,.]*/gi,
+  /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4}\b/gi,
+  /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\b/gi,
   /\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b/g,
   /\b\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?\b/gi,
   /\b\d{4,8}\b/g,

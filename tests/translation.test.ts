@@ -172,6 +172,28 @@ describe("translation storage and node mapping", () => {
     db.close();
   });
 
+  it("protects written calendar dates before sending text to the provider", async () => {
+    const db = database();
+    const secret = "s".repeat(48);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", apiKey: "fictional-key", model: "model-a", targetLanguage: "zh-CN", enabled: false });
+    let connection = true;
+    let providerInput = "";
+    const provider = { complete: async (_config: unknown, _instructions: string, input: string) => {
+      if (connection) { connection = false; return "DX_TRANSLATION_OK"; }
+      providerInput = input;
+      const parsed = JSON.parse(input) as { nodes: Array<{ id: string; text: string }> };
+      return JSON.stringify({ translations: parsed.nodes.map((node) => ({ id: node.id, text: node.text.replace("Date:", "日期：") })) });
+    } };
+    await testTranslationConnection(db, secret, provider);
+    saveTranslationSettings(db, secret, { protocol: "responses", baseUrl: "https://api.example.test/v1", model: "model-a", targetLanguage: "zh-CN", enabled: true });
+    const result = await translateMessage({ db, secret, provider, mailboxId: 1, accountId: "account-a", emailId: "written-date", html: "<p>Date: November 4, 2026.</p>", plain: "" });
+    expect(providerInput).not.toContain("November 4, 2026");
+    expect(providerInput).toContain("__DX_PROTECTED_0__");
+    expect(result).toMatchObject({ partial: false, cached: false });
+    expect(result.html).toContain("November 4, 2026");
+    db.close();
+  });
+
   it("retries incomplete node translations and caches only a complete result", async () => {
     const db = database();
     const secret = "s".repeat(48);
@@ -191,7 +213,7 @@ describe("translation storage and node mapping", () => {
     expect(result).toMatchObject({ partial: false, cached: false });
     expect(result.metrics.apiRequestCount).toBe(2);
     expect(result.html).toContain("账户安全设置已更新");
-    expect(db.db.prepare("SELECT prompt_version FROM translation_cache WHERE email_id='retry-incomplete'").get()).toEqual({ prompt_version: "email-text-v2" });
+    expect(db.db.prepare("SELECT prompt_version FROM translation_cache WHERE email_id='retry-incomplete'").get()).toEqual({ prompt_version: "email-text-v3" });
     db.close();
   });
 });

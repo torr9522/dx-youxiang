@@ -6,6 +6,7 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 - Bound translation-provider concurrency, parallelize independent chunks, deduplicate concurrent requests for one message, and expose non-sensitive server timing metrics.
 - Translate ordinary hyphenated English instead of protecting it as a machine identifier, reject incomplete node output with a bounded retry, and invalidate earlier translation caches by prompt version.
+- Preserve written calendar dates through placeholder protection and invalidate translations created before this protection was added.
 - Add React Router browser-history routes for inboxes, messages, mailbox management and settings, including authenticated deep-link restoration and a scoped SPA fallback.
 
 ## [0.1.3] - 2026-11-03
