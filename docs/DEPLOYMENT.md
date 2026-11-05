@@ -2,7 +2,7 @@
 
 ## DNS prerequisites
 
-Create a DNS-only A record from the mail host to the server IPv4 address, and an MX record from the mail domain to the mail host. Do not create an AAAA record without working public IPv6. Do not place SMTP or IMAP behind a CDN HTTP proxy.
+Create a DNS-only A record from the mail host to the server IPv4 address, an MX record from the mail domain to the mail host, PTR back to that host, one SPF policy, the Stalwart-generated DKIM TXT record and an initial DMARC policy. Do not create an AAAA record without working IPv6 routing, PTR and forward-confirmed reverse DNS. Do not place mail protocols behind a CDN HTTP proxy.
 
 The installer never changes DNS. It refuses to add later domains through the application until their MX record points to the configured mail host.
 
@@ -16,7 +16,7 @@ The installer never changes DNS. It refuses to add later domains through the app
 6. Confirm Certbot issued the certificate and its deploy hook updated Caddy and Stalwart.
 7. Confirm `/readyz`, SMTP STARTTLS and IMAPS certificate names.
 
-The installer does not clear or replace UFW/nftables rules. Its project-owned nftables table always rejects new outbound TCP connections to 25/465/587, so replies on established inbound SMTP sessions continue. Before initial trusted TLS and backup readiness it also rejects new public inbound TCP 25 connections; successful certificate setup opens only that gate. Existing host/provider inbound policies must already permit 25/80/443/993; the installer reports but cannot change a provider firewall.
+The installer does not clear or replace UFW/nftables rules. Its project-owned table allows new outbound TCP 25 only for the Stalwart UID and rejects other processes' new connections to 25/465/587. Before trusted TLS and backup readiness it also rejects new public inbound TCP 25. Existing host/provider policies must permit inbound 25/80/443/465/587/993 and outbound 25.
 
 Production is the default ACME mode. Release acceptance may explicitly prefix the install command with `ACME_MODE=staging`; the only accepted values are `staging` and `production`. They map respectively to `https://acme-staging-v02.api.letsencrypt.org/directory` and `https://acme-v02.api.letsencrypt.org/directory`. The selected mode and exact directory are persisted in `/etc/dx-youxiang/certificate.env`, passed explicitly to Certbot, and never fall back to the other environment. Staging certificates are deliberately not trusted by browsers and must be verified with a separate test-only CA bundle from Let's Encrypt rather than adding staging roots to the system trust store.
 
@@ -34,5 +34,7 @@ curl -fsS "http://127.0.0.1:${app_port}/healthz"
 curl -fsS "http://127.0.0.1:${app_port}/readyz" | jq
 ss -lntp
 openssl s_client -connect mail.example.test:25 -starttls smtp -servername mail.example.test
+openssl s_client -connect mail.example.test:587 -starttls smtp -servername mail.example.test
+openssl s_client -connect mail.example.test:465 -servername mail.example.test
 openssl s_client -connect mail.example.test:993 -servername mail.example.test
 ```

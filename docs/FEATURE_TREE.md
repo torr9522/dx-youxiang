@@ -4,8 +4,8 @@
 
 ```text
 Dx Youxiang
-|-- Administrator authentication
-|   |-- one administrator, no registration
+|-- Unified authentication
+|   |-- administrator and enabled mailbox users, no registration
 |   |-- Argon2id password, secure cookie, CSRF, rate limit
 |   `-- audit log
 |-- Domains
@@ -14,8 +14,8 @@ Dx Youxiang
 |-- Mailboxes
 |   |-- real independent Stalwart User account
 |   |-- note, status, account mapping
-|   |-- receive enabled / send disabled
-|   `-- optional IMAP authentication with independent password
+|   |-- receive enabled; external login and send independently controlled
+|   `-- one Stalwart password for web, IMAP and SMTP authentication
 |-- Inbox
 |   |-- account- and Inbox-scoped list/search/pagination
 |   |-- plain and sanitized layout-preserving HTML body
@@ -23,6 +23,14 @@ Dx Youxiang
 |   |-- verification-code extraction
 |   |-- attachment ownership check and download
 |   `-- read/unread and delete
+|-- Webmail sending
+|   |-- server-side Drafts and Sent
+|   |-- compose, reply, reply-all, forward and attachments
+|   `-- user-authenticated JMAP EmailSubmission
+|-- Mail clients
+|   |-- IMAPS 993
+|   |-- Submission 587 STARTTLS and 465 TLS
+|   `-- direct MX delivery over SMTP 25
 `-- Operations
     |-- systemd health/readiness and restart
     |-- Caddy/Certbot shared TLS
@@ -31,7 +39,7 @@ Dx Youxiang
     `-- release upgrade and rollback
 ```
 
-Junk browsing, sending, reply, forward, POP3, Exchange, public registration, multiple administrators, containers, client auto-configuration, and immediate termination of existing IMAP sessions are outside `0.1.0`.
+POP3, Exchange, public registration, multiple administrators, containers, client auto-configuration, bulk sending, and immediate termination of existing IMAP sessions remain outside scope.
 
 ## Future Backlog
 

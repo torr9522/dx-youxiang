@@ -6,15 +6,15 @@ Run `npm ci`, lint, both TypeScript checks, Vitest, production build, ShellCheck
 
 The CycloneDX gate must verify that `react`, `react-dom`, Stalwart, the private Node.js runtime, Caddy and Cosign are present with the versions and digests pinned by the installer. Do not replace a previously complete SBOM with an npm-only graph.
 
-Tests must cover authentication/CSRF, positive numeric route IDs, mailbox account binding, Inbox-only list/search/pagination, detail/attachment ownership, read state, HTML sanitization, six-character mailbox passwords and shorter rejection.
+Tests must cover administrator/mailbox authentication, role-bound sessions, CSRF, positive numeric route IDs, mailbox account binding, folder list/search/pagination, detail/attachment/translation ownership, send permission, user-authenticated JMAP submission, sender spoof rejection, open relay, HTML sanitization, six-character mailbox passwords and shorter rejection.
 
 Phase 1.7 routing regression includes top navigation, mailbox and message URL changes, browser back/forward, direct message URLs, authenticated deep-link restoration, rejection of external return URLs, legacy settings routes, invalid mailbox/message states, list scroll restoration, JSON API 404 responses and the scoped SPA fallback. Translation regression includes concurrency limits, in-flight deduplication, cache timings, prompt-version invalidation, mixed-language and ordinary hyphenated words, protected identifiers, complete node mapping and bounded retries for incomplete output.
 
 ## Clean Install Gate
 
-Start with newly installed Debian 12 AMD64. Use only the one-line command for an immutable RC from GitHub. Do not manually install a missing dependency or patch the server. Verify systemd enablement, reboot recovery, Caddy, trusted HTTPS/STARTTLS/IMAPS, `/healthz`, `/readyz`, backup timer, log rotation, disk threshold and outbound SMTP rejection.
+Start with newly installed Debian 12 AMD64. Use an immutable build and the formal installer; do not patch the server. Verify systemd enablement, reboot recovery, Caddy, trusted HTTPS, SMTP 25 STARTTLS, 587 STARTTLS, 465 TLS, IMAPS, `/healthz`, `/readyz`, backup timer, log rotation, disk threshold and Stalwart-only outbound SMTP.
 
-Create two real mailbox accounts with distinct account IDs. Verify empty, one-message and multiple-message Inbox states, search, pagination, detail, attachment, read flags, rapid A/B switching and cross-account rejection. Verify IMAP default denial, enable with `123456`, own-mail access, send denial, then new-login denial after disabling.
+Create two real mailbox accounts with distinct account IDs. Verify unified login, all four external-login/send states, Inbox/Sent/Drafts, compose/reply/forward/attachment, JMAP and SMTP submission, sender matching, queue status, IMAP, rapid A/B switching and direct cross-account API rejection. Existing IMAP connections may persist after disabling; new authentication must fail.
 
 Use an authorized independent Gmail or Outlook account for at least one real inbound delivery. Never send the test from the mail server. Open-relay tests must use controlled addresses and must not emit mail to third parties.
 

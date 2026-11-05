@@ -263,7 +263,7 @@ export class StalwartClient {
       subject: input.subject,
       textBody: [{ partId: "text", type: "text/plain" }],
       bodyValues,
-      attachments: input.attachments.map((item) => ({ blobId: item.blobId, type: item.type, name: item.name, disposition: "attachment", size: item.size })),
+      attachments: input.attachments.map((item) => ({ blobId: item.blobId, type: item.type, name: item.name, disposition: "attachment" })),
     };
     if (input.html) {
       bodyValues.html = { value: input.html, isTruncated: false };

@@ -6,8 +6,10 @@ Important invariants:
 
 - Never accept a Stalwart account ID from the browser.
 - Resolve every email and attachment through the selected application mailbox row.
-- Never add send, reply, forward, submission or relay features.
-- Never remove `emailSend` from disabled permissions.
+- Keep receive enabled and external login/send disabled for every new mailbox.
+- Enable `emailSend` and JMAP submission permissions only when both per-mailbox switches are enabled.
+- Derive `From` and JMAP account identity from the mailbox-bound session; never accept them from the browser.
+- Use mailbox-user credentials for JMAP submission and keep SMTP relay unauthenticated access denied.
 - Passwords may be accepted only over authenticated CSRF-protected routes and must never be logged or returned.
 - Keep mail HTML sanitization and remote-image blocking server-side.
 - Test backup changes with an isolated restore, not by copying live RocksDB.

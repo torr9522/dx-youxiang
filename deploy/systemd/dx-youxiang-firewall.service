@@ -1,5 +1,5 @@
 [Unit]
-Description=Dx Youxiang receive-only SMTP egress policy
+Description=Dx Youxiang Stalwart-only SMTP egress policy
 After=network-pre.target
 Before=network.target stalwart.service
 

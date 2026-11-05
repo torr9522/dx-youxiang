@@ -2,7 +2,7 @@
   "name": "dx-youxiang",
   "version": "0.1.4",
   "private": true,
-  "description": "A receive-only, single-admin mailbox management hub for Stalwart Mail Server.",
+  "description": "A self-hosted mailbox administration and webmail hub for Stalwart Mail Server.",
   "license": "MIT",
   "type": "module",
   "engines": {

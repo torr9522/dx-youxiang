@@ -16,7 +16,7 @@ Require the exact old/new hosts, stable version, fresh read-only production audi
 1. Read `docs/MIGRATION.md` and `docs/PRODUCTION_DEPLOYMENT.md`; confirm production is never a reinstall target.
 2. Re-audit services, resources, ports, Caddy, firewall, timers, and existing site health.
 3. Install from the public stable release in coexist mode. Restore into isolation and compare accounts, immutable account IDs, messages, attachments, folders, flags, permissions, credentials state, and administrator access.
-4. Recheck every existing site, Dx readiness, TLS, SMTP/IMAP, receive-only controls, capacity alerts, and off-host encrypted backup.
+4. Recheck every existing site, Dx readiness, TLS, SMTP/IMAP/submission, permission and relay controls, capacity alerts, and off-host encrypted backup.
 5. At the window freeze old inbound receive, make a final consistent backup, restore and verify it on production, then report the exact A-record change and rollback plan.
 6. Wait for explicit DNS authorization. After cutover monitor both hosts and reconcile any late delivery before retiring the old listener.
 

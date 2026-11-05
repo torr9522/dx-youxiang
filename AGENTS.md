@@ -10,10 +10,11 @@ Project-level Codex skills are in `.agents/skills`. Load the narrow skill matchi
 
 ## Non-Negotiable Invariants
 
-- This is a receive-only system. Do not add compose, reply, forward, submission, relay, POP3, or outbound notification features.
+- Mail sending uses Stalwart JMAP EmailSubmission or authenticated SMTP Submission only. Never add a custom MTA, anonymous relay, bulk sending, POP3, or a third-party relay default.
 - Every mailbox is a real Stalwart User account. Never replace accounts with aliases, catch-all routing, or a shared Inbox.
 - The browser uses only the numeric SQLite mailbox ID. Resolve its stored Stalwart `accountId` on the server for every message, body, flag, delete, and attachment operation.
-- Ordinary accounts keep `emailReceive` enabled and `emailSend` disabled. `authenticate` is disabled by default and enabled only with a 6-256 character independent password.
+- Ordinary accounts keep `emailReceive` enabled. `externalLogin` and `emailSend` are independent and disabled by default; effective sending requires both. The same 6-256 character Stalwart credential authenticates webmail, IMAP and SMTP.
+- Mailbox-user sessions bind one numeric mailbox ID and immutable account ID. Derive From server-side and use the mailbox user's credential for JMAP submission.
 - Do not claim existing IMAP sessions are immediately revoked. Stalwart 1.0.1 only has verified immediate rejection for new authentication.
 - Never copy running RocksDB as a backup. Use Stalwart export and prove restore in an isolated store.
 - Do not commit domains, IPs, mailboxes, mail, databases, credentials, certificates, backups, or logs from a real deployment.

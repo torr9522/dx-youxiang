@@ -4,6 +4,15 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+### Added
+
+- Add one login entry for the existing administrator and mailbox users authenticated against their Stalwart credentials.
+- Add role-bound mailbox sessions, per-request external-login checks, account isolation, and encrypted ephemeral Stalwart credentials.
+- Add independent per-mailbox send permission with receive enabled and login/send disabled by default.
+- Add Inbox, Sent and Drafts views, compose, reply, reply-all, forward, attachments, server-side drafts and JMAP EmailSubmission.
+- Add authenticated SMTP Submission on 587 STARTTLS and 465 implicit TLS while retaining SMTP 25 for server delivery.
+- Generate DKIM keys through Stalwart bootstrap and restrict outbound SMTP 25 to the Stalwart service user.
+
 ## [0.1.4] - 2026-11-04
 
 - Bound translation-provider concurrency, parallelize independent chunks, deduplicate concurrent requests for one message, and expose non-sensitive server timing metrics.

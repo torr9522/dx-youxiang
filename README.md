@@ -1,6 +1,6 @@
 # Dx 邮箱
 
-Dx 邮箱 (`dx-youxiang`) is a receive-only, single-administrator mailbox console for [Stalwart Mail Server](https://stalw.art/). It creates real Stalwart users, keeps every Inbox isolated, and lets the administrator selectively enable IMAP without exposing Stalwart administration credentials to the browser.
+Dx 邮箱 (`dx-youxiang`) is a mailbox administration and webmail application for [Stalwart Mail Server](https://stalw.art/). It creates independent Stalwart users, keeps every account isolated, and provides one role-aware login for the administrator and enabled mailbox users.
 
 Latest stable version: `v0.1.4`.
 
@@ -8,19 +8,21 @@ Latest stable version: `v0.1.4`.
 
 - Real mailbox accounts, never aliases or a shared catch-all inbox
 - Chinese administrator UI with mailbox, message, attachment and domain management
-- Per-mailbox IMAP switch and independent password
+- Per-mailbox external-login and send switches, both disabled by default
+- Mailbox-user webmail with Inbox, Sent, Drafts, compose, reply, forward and attachments
+- IMAPS plus authenticated SMTP Submission on 587 STARTTLS and 465 implicit TLS
 - JMAP access scoped server-side to the selected mailbox account ID
 - Sanitized HTML mail, blocked remote images and safe attachment downloads
 - Optional click-to-translate message bodies with preserved HTML layout, encrypted provider settings and server-side caching
-- No compose, reply, forward, submission or outbound SMTP feature
+- Direct server-to-server SMTP delivery without a third-party relay
 - SQLite WAL application database and Stalwart RocksDB mail storage
 - Systemd services, health checks, encrypted Restic backups and migration documentation
 
 ## Requirements
 
 - Debian 12 AMD64, at least 768 MiB RAM and 5 GiB free disk; 1 GiB RAM and 20 GiB free are recommended
-- Root access, a static IPv4 address and inbound TCP 25/80/443/993
-- An A record for the mail host and an MX record for the mail domain
+- Root access, a static IPv4 address, inbound TCP 25/80/443/465/587/993, and provider-permitted outbound TCP 25
+- A and MX records plus PTR, SPF, DKIM and DMARC before public delivery acceptance
 - No Cloudflare proxy on the mail host
 
 Node.js 26 LTS, Stalwart 1.0.1 and Caddy 2.11.7 are pinned. The installer verifies their official checksums or Stalwart Sigstore attestation. Existing-Caddy mode preserves the installed Caddy binary and adds only `/etc/caddy/dx-youxiang.caddy` after full configuration validation. Certbot is the sole ACME client; `ACME_MODE=staging|production` selects an explicit Let's Encrypt directory without fallback.
@@ -61,9 +63,9 @@ Use `.env.example` with fictional local values. Never copy production environmen
 
 ## Security model
 
-The browser authenticates only to Dx 邮箱. The backend maps its numeric mailbox route to a Stalwart account ID stored in SQLite, so a client cannot select an arbitrary JMAP `accountId`. Ordinary mailboxes use explicit permissions: `emailReceive` and IMAP operations are enabled, while `emailSend` is always disabled and `authenticate` is disabled until the administrator opens IMAP.
+The browser authenticates only to Dx 邮箱. Administrators use Argon2id application authentication. Mailbox users use their full address and existing Stalwart password; the session is bound to one SQLite mailbox ID and immutable Stalwart account ID. The backend never accepts a browser-supplied JMAP `accountId` or sender identity. `emailReceive` stays enabled, while `authenticate` follows external login and `emailSend` is effective only when both switches are enabled.
 
-The Stalwart HTTP/JMAP listener and Node application bind to loopback. Public listeners are SMTP 25, HTTPS 443 and IMAPS 993. SMTP submission, POP3 and ManageSieve are not exposed. A project-owned nftables table rejects new outbound TCP connections to 25, 465 and 587.
+The Stalwart HTTP/JMAP listener and Node application bind to loopback. Public mail listeners are SMTP 25, IMAPS 993, Submission 587 STARTTLS and Submissions 465 implicit TLS. POP3 and ManageSieve are absent. A project-owned nftables table permits new outbound TCP 25 only for the Stalwart service user and rejects other processes' new SMTP connections.
 
 ## License
 

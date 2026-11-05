@@ -44,3 +44,10 @@ The rename does not intentionally alter APIs, the database schema, Stalwart acco
 - A bounded private-provider benchmark used eight synthetic, non-sensitive email samples and three runs per model. The existing configured model measured 17,047 ms average, 15,413 ms P50 and 28,126 ms P90; the selected candidate measured 7,519 ms average, 7,097 ms P50 and 8,847 ms P90. Both passed the three quality suites. These are provider-specific observations, not public defaults; new installations remain unconfigured.
 - The translation prompt/cache version is `email-text-v3`. Lowercase hyphenated words such as `non-sensitive` remain translatable, machine identifiers and written calendar dates remain protected, and incomplete node maps are rejected and retried within the existing bounded attempt count.
 - React Router browser history replaces the previous view-state navigation. Inbox, mailbox, message, mailbox-management and settings routes have stable URLs; direct authenticated deep links, safe post-login restoration, back/forward navigation and a scoped server-side SPA fallback are covered by regression tests.
+
+## Phase 1.8 Mailbox Users And Sending
+
+- The existing login entry accepts either the administrator name or a full mailbox address. Mailbox credentials are verified by Stalwart, then bound to an isolated role/session and rechecked against the external-login switch on every request.
+- Each mailbox keeps receive enabled while external login and sending remain independent and disabled by default. Stalwart permissions enforce the same matrix for web, IMAP, SMTP AUTH and JMAP submission.
+- Mailbox webmail adds Inbox, Sent, Drafts, compose, reply, reply-all, forward and account-scoped attachments. The backend derives From and submits with the mailbox user's own Stalwart credential.
+- Stalwart exposes IMAPS 993, Submission 587 STARTTLS and Submissions 465 TLS. AUTH is unavailable on 25 by default, authenticated senders must match, and the host firewall permits direct outbound TCP 25 only for Stalwart.

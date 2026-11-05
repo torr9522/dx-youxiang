@@ -1,6 +1,6 @@
 ---
 name: dx-mail-operations
-description: Operate and verify Dx Youxiang mailbox accounts, JMAP reads, SMTP receive-only policy, and per-mailbox IMAP access without enabling sending.
+description: Operate and verify Dx Youxiang mailbox accounts, JMAP mail/submission, per-mailbox web/IMAP/SMTP permissions, and direct delivery.
 ---
 
 # Dx Mail Operations
@@ -9,7 +9,7 @@ Use for mailbox creation, account inspection, receive tests, IMAP toggle checks,
 
 ## Invariants
 
-Each address is a Stalwart User account with its own immutable `accountId`. Application routes contain a numeric SQLite ID which the backend resolves; never accept `accountId` from a browser. Ordinary accounts keep `emailReceive` enabled and `emailSend` disabled. `authenticate` is enabled only with an independent password of 6-256 characters.
+Each address is a Stalwart User account with its own immutable `accountId`. Application routes contain a numeric SQLite ID which the backend resolves; never accept `accountId` or From from a browser. Ordinary accounts keep `emailReceive` enabled. External login and sending are independent, disabled by default, and effective submission requires both. One Stalwart password of 6-256 characters is used for web, IMAP and SMTP authentication.
 
 ## Workflow
 

@@ -8,6 +8,8 @@ Only Debian 12 AMD64 is claimed for `0.1.0`. Installation is native Linux/system
 
 The bootstrap downloads `dx-youxiang-v<VERSION>.tar.gz` and `SHA256SUMS` from the matching immutable GitHub Release, verifies the archive, and places it at `/opt/dx-youxiang/releases/<VERSION>`. `/opt/dx-youxiang/current` is the active symlink. Node uses its official SHA-256 list, Caddy its official SHA-512 list, and Stalwart its official GitHub Actions Sigstore bundle verified by a checksum-pinned Cosign binary.
 
+Preview acceptance may explicitly provide an absolute `DX_YOUXIANG_ARCHIVE_PATH` plus its required 64-character `DX_YOUXIANG_ARCHIVE_SHA256`. This changes only the source-archive transport; the same bootstrap and full native installer run. The default and all stable installations continue to require immutable GitHub Release assets.
+
 Configuration is under `/etc/dx-youxiang` and `/etc/stalwart`; application and mail data are under `/var/lib/dx-youxiang` and `/var/lib/stalwart`; encrypted backups default to `/var/backups/dx-youxiang`.
 
 ## Preflight
@@ -18,7 +20,7 @@ The installer checks root, OS/architecture, RAM, disk, NTP, public IPv4, authori
 
 Fresh mode installs pinned Caddy and creates a minimal main config importing `sites-enabled`. Coexist mode reuses active Caddy, backs up its config, adds only one import when needed, installs a project site file, validates before reload, and restores the prior config if validation fails. Existing sites must be health-checked before and after production deployment.
 
-The application selects the first free loopback port from 3000, 3001, 3100, and 3101. Stalwart JMAP uses loopback 8080. The project firewall is enabled before Stalwart starts. It always blocks new outbound SMTP connections and also blocks new public inbound TCP 25 connections until trusted TLS, `/readyz`, and the first encrypted Restic snapshot pass. The readiness marker is root-only and the systemd firewall service reapplies the gate after reboot when it is absent.
+The application selects the first free loopback port from 3000, 3001, 3100, and 3101. Stalwart JMAP uses loopback 8080; public mail listeners are 25, 465, 587 and 993. The project firewall is enabled before Stalwart starts. It permits outbound TCP 25 only for the Stalwart UID and blocks public inbound TCP 25 until trusted TLS, `/readyz`, and the first encrypted Restic snapshot pass. The readiness marker is root-only and the systemd firewall service reapplies the gate after reboot when it is absent.
 
 ## TLS And Recovery
 
