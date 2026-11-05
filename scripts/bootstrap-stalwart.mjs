@@ -34,7 +34,7 @@ if (mode === "bootstrap") {
     defaultHostname: hostname,
     defaultDomain: domain,
     requestTlsCertificate: false,
-    generateDkimKeys: false,
+    generateDkimKeys: true,
     tracer: { "@type": "Log", path: "/var/log/stalwart/", prefix: "stalwart.log", ansi: false, enable: true },
   } } }, "bootstrap"]]);
   const result = response[0][1];
@@ -66,24 +66,36 @@ if (mode === "bootstrap") {
   const servicePassword = randomBytes(30).toString("base64url");
   const mailboxPermissions = {
     emailReceive: true,
+    jmapMailboxGet: true, jmapMailboxQuery: true,
+    jmapEmailGet: true, jmapEmailQuery: true, jmapEmailUpdate: true, jmapEmailDestroy: true,
+    jmapThreadGet: true, jmapSearchSnippetGet: true, jmapBlobGet: true,
     imapAuthenticate: true, imapAclGet: true, imapAclSet: true, imapMyRights: true, imapListRights: true,
     imapAppend: true, imapCapability: true, imapId: true, imapCopy: true, imapMove: true, imapCreate: true,
     imapDelete: true, imapEnable: true, imapExpunge: true, imapFetch: true, imapIdle: true, imapList: true,
     imapLsub: true, imapNamespace: true, imapRename: true, imapSearch: true, imapSort: true, imapSelect: true,
     imapExamine: true, imapStatus: true, imapStore: true, imapSubscribe: true, imapThread: true,
   };
+  const sendPermissions = {
+    emailSend: true,
+    jmapMailboxCreate: true, jmapMailboxUpdate: true,
+    jmapEmailCreate: true, jmapEmailUpdate: true, jmapEmailDestroy: true,
+    jmapIdentityGet: true,
+    jmapEmailSubmissionGet: true, jmapEmailSubmissionQuery: true,
+    jmapEmailSubmissionCreate: true, jmapEmailSubmissionUpdate: true, jmapEmailSubmissionDestroy: true,
+    jmapBlobUpload: true,
+  };
   const serviceDefinition = {
     "@type": "User", name: "dx-youxiang", domainId, description: "Dx 邮箱 service identity",
     credentials: { "0": { "@type": "Password", secret: servicePassword } },
     roles: { "@type": "Custom", roleIds: {} },
-    permissions: { "@type": "Replace", enabledPermissions: { ...mailboxPermissions,
+    permissions: { "@type": "Replace", enabledPermissions: { ...mailboxPermissions, ...sendPermissions,
       authenticate: true, impersonate: true,
       jmapEmailGet: true, jmapEmailQuery: true, jmapEmailUpdate: true, jmapEmailDestroy: true,
       jmapMailboxGet: true, jmapMailboxQuery: true, jmapBlobGet: true,
       sysAccountGet: true, sysAccountCreate: true, sysAccountUpdate: true, sysAccountDestroy: true, sysAccountQuery: true,
       sysDomainGet: true, sysDomainCreate: true, sysDomainUpdate: true, sysDomainDestroy: true, sysDomainQuery: true,
       sysActionCreate: true, actionReloadTlsCertificates: true
-    }, disabledPermissions: { emailSend: true } }, quotas: {}, encryptionAtRest: { "@type": "Disabled" }
+    }, disabledPermissions: {} }, quotas: {}, encryptionAtRest: { "@type": "Disabled" }
   };
   const create = {};
   const update = {};
@@ -91,10 +103,14 @@ if (mode === "bootstrap") {
   else create.service = serviceDefinition;
   const listenerUpdate = {};
   const listenerDestroy = [];
+  let hasSubmission = false;
+  let hasSubmissions = false;
   for (const item of listeners) {
     if (item.name === "smtp") listenerUpdate[item.id] = { bind: { "0.0.0.0:25": true }, useTls: true, implicitTls: false };
     else if (item.name === "imaps") listenerUpdate[item.id] = { bind: { "0.0.0.0:993": true }, useTls: true, implicitTls: true };
     else if (item.name === "http") listenerUpdate[item.id] = { bind: { "127.0.0.1:8080": true }, useTls: false, implicitTls: false };
+    else if (item.name === "submission") { hasSubmission = true; listenerUpdate[item.id] = { bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false }; }
+    else if (item.name === "submissions") { hasSubmissions = true; listenerUpdate[item.id] = { bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true }; }
     else listenerDestroy.push(item.id);
   }
   const methods = [];
@@ -105,7 +121,10 @@ if (mode === "bootstrap") {
   methods.push(["x:Certificate/set", certificateIds.length
     ? { update: { [certificateIds[0]]: certificateDefinition } }
     : { create: { cert: certificateDefinition } }, "cert"]);
-  methods.push(["x:NetworkListener/set", { update: listenerUpdate, destroy: listenerDestroy }, "listeners"]);
+  const listenerCreate = {};
+  if (!hasSubmission) listenerCreate.submission = { name: "submission", bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false };
+  if (!hasSubmissions) listenerCreate.submissions = { name: "submissions", bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true };
+  methods.push(["x:NetworkListener/set", { create: listenerCreate, update: listenerUpdate, destroy: listenerDestroy }, "listeners"]);
   methods.push(["x:Authentication/set", { update: { singleton: {
     minPasswordLength: 6,
     minPasswordStrength: "zero",

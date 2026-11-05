@@ -19,6 +19,8 @@ check web-health curl -fsS --max-time 5 "http://127.0.0.1:${app_port}/healthz"
 check web-readiness curl -fsS --max-time 8 "http://127.0.0.1:${app_port}/readyz"
 check stalwart-jmap curl -fsS --max-time 5 http://127.0.0.1:8080/.well-known/jmap
 check smtp-listener sh -c "ss -lnt '( sport = :25 )' | grep -q LISTEN"
+check submission-587 sh -c "ss -lnt '( sport = :587 )' | grep -q LISTEN"
+check submissions-465 sh -c "ss -lnt '( sport = :465 )' | grep -q LISTEN"
 check imaps-listener sh -c "ss -lnt '( sport = :993 )' | grep -q LISTEN"
 check firewall-policy /opt/dx-youxiang/current/scripts/firewall.sh check
 check smtp-inbound-ready /opt/dx-youxiang/current/scripts/firewall.sh check-inbound

@@ -68,9 +68,14 @@ describe("Stalwart bootstrap maintenance", () => {
     } });
 
     const mutation = test.payloads[2].methodCalls;
-    expect(mutation[0][1].update["service-1"].permissions.disabledPermissions.emailSend).toBe(true);
+    expect(mutation[0][1].update["service-1"].permissions.enabledPermissions).toMatchObject({ emailSend: true, jmapEmailCreate: true, jmapEmailSubmissionCreate: true, jmapBlobUpload: true });
+    expect(mutation[0][1].update["service-1"].permissions.disabledPermissions).toEqual({});
     expect(mutation[0][1].update["service-1"].credentials["0"].secret.length).toBeGreaterThan(30);
     expect(mutation[1][1].update["certificate-1"].certificate.filePath).toBe("/etc/dx-youxiang/tls/fullchain.pem");
+    expect(mutation[2][1].create).toMatchObject({
+      submission: { bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false },
+      submissions: { bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true },
+    });
     expect(mutation[3]).toEqual(["x:Authentication/set", { update: { singleton: {
       minPasswordLength: 6,
       minPasswordStrength: "zero",

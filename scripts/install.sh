@@ -168,7 +168,7 @@ for nameserver in $authoritative_ns; do
   }
 done
 
-for port in 25 993 8080; do
+for port in 25 465 587 993 8080; do
   port_busy "$port" && { echo "TCP $port is already in use" >&2; exit 1; }
 done
 

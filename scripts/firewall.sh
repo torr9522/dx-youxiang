@@ -6,17 +6,19 @@ nft_bin=${DX_NFT_BIN:-nft}
 smtp_inbound_state=${DX_SMTP_INBOUND_STATE:-/var/lib/dx-youxiang/smtp-inbound.enabled}
 
 apply_rules() {
+  stalwart_uid=${DX_STALWART_UID:-$(id -u stalwart)}
   if test -f "$smtp_inbound_state"; then
-    "$nft_bin" -f - <<'EOF'
+    "$nft_bin" -f - <<EOF
 table inet dx_youxiang {
   chain output {
     type filter hook output priority filter; policy accept;
-    ct state new tcp dport { 25, 465, 587 } reject with tcp reset comment "dx-youxiang receive-only policy"
+    meta skuid $stalwart_uid ct state new tcp dport 25 accept comment "dx-youxiang Stalwart direct delivery"
+    ct state new tcp dport { 25, 465, 587 } reject with tcp reset comment "dx-youxiang outbound SMTP isolation"
   }
 }
 EOF
   else
-    "$nft_bin" -f - <<'EOF'
+    "$nft_bin" -f - <<EOF
 table inet dx_youxiang {
   chain input {
     type filter hook input priority filter; policy accept;
@@ -24,7 +26,8 @@ table inet dx_youxiang {
   }
   chain output {
     type filter hook output priority filter; policy accept;
-    ct state new tcp dport { 25, 465, 587 } reject with tcp reset comment "dx-youxiang receive-only policy"
+    meta skuid $stalwart_uid ct state new tcp dport 25 accept comment "dx-youxiang Stalwart direct delivery"
+    ct state new tcp dport { 25, 465, 587 } reject with tcp reset comment "dx-youxiang outbound SMTP isolation"
   }
 }
 EOF

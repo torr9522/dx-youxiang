@@ -36,10 +36,11 @@ function environment(paths: Awaited<ReturnType<typeof fixture>>) {
     DX_NFT_BIN: paths.nft,
     DX_NFT_RULESET: paths.rules,
     DX_SMTP_INBOUND_STATE: paths.state,
+    DX_STALWART_UID: "12345",
   };
 }
 
-describe("receive-only firewall", () => {
+describe("mail firewall isolation", () => {
   it("gates public SMTP until the readiness marker exists", async () => {
     const paths = await fixture();
     const env = environment(paths);
@@ -47,7 +48,8 @@ describe("receive-only firewall", () => {
     await run("sh", ["scripts/firewall.sh", "apply"], { env });
     const gated = await readFile(paths.rules, "utf8");
     expect(gated).toContain("dx-youxiang SMTP readiness gate");
-    expect(gated).toContain("dx-youxiang receive-only policy");
+    expect(gated).toContain("dx-youxiang outbound SMTP isolation");
+    expect(gated).toContain("meta skuid 12345 ct state new tcp dport 25 accept");
     await expect(run("sh", ["scripts/firewall.sh", "check-inbound"], { env }))
       .rejects.toMatchObject({ code: 1 });
 
@@ -55,7 +57,7 @@ describe("receive-only firewall", () => {
     await run("sh", ["scripts/firewall.sh", "apply"], { env });
     const ready = await readFile(paths.rules, "utf8");
     expect(ready).not.toContain("dx-youxiang SMTP readiness gate");
-    expect(ready).toContain("dx-youxiang receive-only policy");
+    expect(ready).toContain("dx-youxiang outbound SMTP isolation");
     await expect(run("sh", ["scripts/firewall.sh", "check-inbound"], { env })).resolves.toBeDefined();
   });
 });
