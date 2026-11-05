@@ -121,6 +121,7 @@ describe("Stalwart account provisioning", () => {
     expect(requests[1].headers.authorization).toBe(`Basic ${Buffer.from("a@example.test:mailbox-password").toString("base64")}`);
     expect(requests[1].payload.methodCalls[0][1].create.message.from).toEqual([{ email: "a@example.test" }]);
     expect(requests[1].payload.methodCalls[1][1]).toMatchObject({ accountId: "acc-a", create: { submission: { identityId: "identity-id", emailId: "#message" } } });
+    expect(requests[1].payload.using).toContain("urn:ietf:params:jmap:submission");
     expect(requests[1].payload.methodCalls[1][1].onSuccessUpdateEmail["#submission"]).toMatchObject({ "mailboxIds/drafts-id": null, "mailboxIds/sent-id": true, "keywords/$draft": null });
   });
 });

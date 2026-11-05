@@ -69,7 +69,7 @@ export class StalwartClient {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:stalwart:jmap"],
+        using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission", "urn:stalwart:jmap"],
         methodCalls,
       }),
     }, authorization);
