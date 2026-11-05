@@ -67,6 +67,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
   const messageScrollTop = useRef(0);
 
   const selectedMailbox = mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
+  const canSendFromSelectedMailbox = selectedMailbox?.email_send === 1;
   const displayHtml = translationMode === "translated" && translatedMessage ? translatedMessage.html : selectedMessage?.html ?? "";
   const displayPlain = translationMode === "translated" && translatedMessage ? translatedMessage.plain : selectedMessage?.plain ?? "";
 
@@ -238,6 +239,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
     setMessageSearch("");
     setSearchField("text");
     setReadFilter("all");
+    setComposeMode(null);
     setSelectedMessage(null);
     setTranslatedMessage(null);
     setTranslationMode("original");
@@ -250,6 +252,13 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
     appliedRoute.current = `${selectedMailboxId}\0${message.id}`;
     onMessageRoute?.(selectedMailboxId, message.id);
     await loadMessageDetail(selectedMailboxId, message.id);
+  };
+
+  const refreshSelectedMailbox = async () => {
+    if (!selectedMailboxId) return;
+    const currentId = selectedMailboxId;
+    const rows = await loadMailboxes(mailboxSearch, currentId);
+    if (rows.some((row) => row.id === currentId)) await loadMessages(currentId, position);
   };
 
   useEffect(() => {
@@ -381,8 +390,8 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         <div className="flex min-h-8 items-center gap-2">
           <button onClick={() => { appliedRoute.current = "\0"; onInboxRoute?.(); setMobileStage("mailboxes"); }} aria-label="返回邮箱列表" className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"><ArrowLeft size={18} /></button>
           <div className="min-w-0 flex-1"><div title={selectedMailbox?.address} className="truncate text-sm font-semibold text-slate-900">{selectedMailbox?.address ?? "选择邮箱"}</div><div className="mt-0.5 text-xs text-slate-500">{total} 封邮件</div></div>
-          {!isAdmin && selectedMailbox?.email_send === 1 && <button title="写邮件" aria-label="写邮件" onClick={() => setComposeMode("compose")} className="focus-ring grid h-8 w-8 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={15} /></button>}
-          {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void loadMessages(selectedMailboxId, position)} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
+          {canSendFromSelectedMailbox && <button title="写邮件" aria-label="写邮件" onClick={() => setComposeMode("compose")} className="focus-ring grid h-8 w-8 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={15} /></button>}
+          {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void refreshSelectedMailbox()} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
         </div>
         <div className="mt-3 grid grid-cols-3 rounded-md bg-slate-100 p-0.5 text-xs">{([['inbox','收件箱'],['sent','已发送'],['drafts','草稿']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => { setFolder(value); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, "", "text", "all", "desc", value); }} className={`h-8 rounded ${folder === value ? "bg-white font-medium text-blue-700 shadow-sm" : "text-slate-600"}`}>{label}</button>)}</div>
         <form className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2" onSubmit={(event) => { event.preventDefault(); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0); }}>
@@ -424,7 +433,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
               <time className="mt-1 block text-xs text-slate-400">{new Date(selectedMessage.receivedAt).toLocaleString("zh-CN")}</time>
             </div>
             <div className="flex shrink-0 gap-1">
-              {!isAdmin && selectedMailbox?.email_send === 1 && <><button title="回复" aria-label="回复" onClick={() => setComposeMode("reply")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Reply size={17} /></button><button title="回复全部" aria-label="回复全部" onClick={() => setComposeMode("replyAll")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><ReplyAll size={17} /></button><button title="转发" aria-label="转发" onClick={() => setComposeMode("forward")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Forward size={17} /></button></>}
+              {canSendFromSelectedMailbox && <><button title="回复" aria-label="回复" onClick={() => setComposeMode("reply")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Reply size={17} /></button><button title="回复全部" aria-label="回复全部" onClick={() => setComposeMode("replyAll")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><ReplyAll size={17} /></button><button title="转发" aria-label="转发" onClick={() => setComposeMode("forward")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Forward size={17} /></button></>}
               <button title={selectedMessage.keywords?.["$seen"] ? "标记未读" : "标记已读"} aria-label={selectedMessage.keywords?.["$seen"] ? "标记未读" : "标记已读"} onClick={() => void markRead(!selectedMessage.keywords?.["$seen"])} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700">{selectedMessage.keywords?.["$seen"] ? <Mail size={17} /> : <MailOpen size={17} />}</button>
               <button title="删除邮件" aria-label="删除邮件" onClick={() => void deleteMessage()} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-red-600 hover:bg-red-50"><Trash2 size={17} /></button>
             </div>
