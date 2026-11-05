@@ -124,4 +124,40 @@ describe("Stalwart account provisioning", () => {
     expect(requests[1].payload.using).toContain("urn:ietf:params:jmap:submission");
     expect(requests[1].payload.methodCalls[1][1].onSuccessUpdateEmail["#submission"]).toMatchObject({ "mailboxIds/drafts-id": null, "mailboxIds/sent-id": true, "keywords/$draft": null });
   });
+
+  it("submits an admin-selected mailbox through the protected service identity", async () => {
+    const requests: Array<{ headers: any; payload: any }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      requests.push({ headers: init?.headers, payload });
+      if (requests.length === 1) return new Response(JSON.stringify({ methodResponses: [
+        ["Mailbox/query", { ids: ["drafts-id"] }, "drafts"],
+        ["Mailbox/query", { ids: ["sent-id"] }, "sent"],
+        ["Identity/get", { list: [{ id: "identity-id", email: "selected@example.test" }] }, "identities"],
+      ] }), { status: 200 });
+      return new Response(JSON.stringify({ methodResponses: [
+        ["Email/set", { created: { message: { id: "email-id" } } }, "email-create"],
+        ["EmailSubmission/set", { created: { submission: { id: "submission-id" } } }, "submission-create"],
+      ] }), { status: 200 });
+    }));
+
+    const result = await new StalwartClient(config).saveDraftOrSubmitAsService({
+      address: "selected@example.test", accountId: "selected-account", to: ["recipient@example.test"],
+      cc: [], bcc: [], subject: "Admin", text: "Body", attachments: [], submit: true,
+    });
+
+    expect(result.status).toBe("queued");
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.headers.authorization).toBe(`Basic ${Buffer.from("service@example.test:not-a-real-secret").toString("base64")}`);
+    }
+    expect(requests[1].payload.methodCalls[0][1]).toMatchObject({
+      accountId: "selected-account",
+      create: { message: { from: [{ email: "selected@example.test" }] } },
+    });
+    expect(requests[1].payload.methodCalls[1][1]).toMatchObject({
+      accountId: "selected-account",
+      create: { submission: { identityId: "identity-id", emailId: "#message" } },
+    });
+  });
 });

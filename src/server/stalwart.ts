@@ -209,8 +209,7 @@ export class StalwartClient {
     return this.fetch(internal.pathname + internal.search);
   }
 
-  async uploadAs(address: string, password: string, accountId: string, body: Buffer, type: string) {
-    const authorization = `Basic ${Buffer.from(`${address}:${password}`).toString("base64")}`;
+  private async uploadAuthorized(accountId: string, body: Buffer, type: string, authorization = this.authorization) {
     const session = await (await this.fetch("/.well-known/jmap", {}, authorization)).json() as any;
     const rendered = String(session.uploadUrl).replace("{accountId}", encodeURIComponent(accountId));
     const target = new URL(rendered);
@@ -225,9 +224,17 @@ export class StalwartClient {
     return response.json() as Promise<{ accountId: string; blobId: string; type: string; size: number }>;
   }
 
-  async saveDraftOrSubmit(input: {
+  uploadAs(address: string, password: string, accountId: string, body: Buffer, type: string) {
+    const authorization = `Basic ${Buffer.from(`${address}:${password}`).toString("base64")}`;
+    return this.uploadAuthorized(accountId, body, type, authorization);
+  }
+
+  uploadAsService(accountId: string, body: Buffer, type: string) {
+    return this.uploadAuthorized(accountId, body, type);
+  }
+
+  private async saveDraftOrSubmitAuthorized(input: {
     address: string;
-    password: string;
     accountId: string;
     to: string[];
     cc: string[];
@@ -239,13 +246,13 @@ export class StalwartClient {
     submit: boolean;
     inReplyTo?: string;
     references?: string[];
-  }) {
+  }, call: (methodCalls: any[]) => Promise<MethodResponse[]>) {
     const folderCalls = [
       ["Mailbox/query", { accountId: input.accountId, filter: { role: "drafts" }, limit: 1 }, "drafts"],
       ["Mailbox/query", { accountId: input.accountId, filter: { role: "sent" }, limit: 1 }, "sent"],
       ["Identity/get", { accountId: input.accountId }, "identities"],
     ];
-    const metadata = await this.callAs(input.address, input.password, folderCalls);
+    const metadata = await call(folderCalls);
     const draftId = metadata.find(([, , tag]) => tag === "drafts")?.[1]?.ids?.[0];
     const sentId = metadata.find(([, , tag]) => tag === "sent")?.[1]?.ids?.[0];
     const identities = metadata.find(([, , tag]) => tag === "identities")?.[1]?.list ?? [];
@@ -277,7 +284,7 @@ export class StalwartClient {
       create: { submission: { identityId: identity.id, emailId: "#message" } },
       onSuccessUpdateEmail: { "#submission": { [`mailboxIds/${draftId}`]: null, [`mailboxIds/${sentId}`]: true, "keywords/$draft": null } },
     }, "submission-create"]);
-    const result = await this.callAs(input.address, input.password, calls);
+    const result = await call(calls);
     const created = result.find(([, , tag]) => tag === "email-create")?.[1];
     if (created?.notCreated?.message) throw new StalwartError(created.notCreated.message.description ?? "邮件创建失败", created.notCreated.message);
     const submission = result.find(([, , tag]) => tag === "submission-create")?.[1];
@@ -287,5 +294,13 @@ export class StalwartClient {
       submissionId: submission?.created?.submission?.id as string | undefined,
       status: input.submit ? "queued" as const : "draft" as const,
     };
+  }
+
+  saveDraftOrSubmit(input: Parameters<StalwartClient["saveDraftOrSubmitAuthorized"]>[0] & { password: string }) {
+    return this.saveDraftOrSubmitAuthorized(input, (methodCalls) => this.callAs(input.address, input.password, methodCalls));
+  }
+
+  saveDraftOrSubmitAsService(input: Parameters<StalwartClient["saveDraftOrSubmitAuthorized"]>[0]) {
+    return this.saveDraftOrSubmitAuthorized(input, (methodCalls) => this.call(methodCalls));
   }
 }

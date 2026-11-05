@@ -458,41 +458,54 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     if (value.to.length + value.cc.length + value.bcc.length > 50) ctx.addIssue({ code: "custom", message: "每封邮件最多 50 个收件人" });
   });
 
-  function sendingIdentity(res: Response) {
+  function sendingContext(row: any, res: Response) {
     const identity = res.locals.auth as AuthenticatedSession;
-    if (identity.role !== "mailbox_user" || !identity.mailboxId || !identity.address || !identity.accountId) {
-      throw Object.assign(new Error("仅邮箱用户可以提交邮件"), { status: 403 });
+    if (row.status !== "active" || row.email_send !== 1) {
+      throw Object.assign(new Error("当前邮箱未启用发信权限"), { status: 403 });
     }
-    if (!identity.emailSend) throw Object.assign(new Error("当前邮箱未启用发信权限"), { status: 403 });
-    return identity;
+    if (identity.role === "admin") {
+      return { actor: config.ADMIN_USERNAME, role: identity.role, address: row.address as string, accountId: row.stalwart_account_id as string };
+    }
+    if (identity.mailboxId !== row.id || identity.address !== row.address || identity.accountId !== row.stalwart_account_id) {
+      throw Object.assign(new Error("邮箱不存在"), { status: 404 });
+    }
+    return { actor: identity.address, role: identity.role, address: row.address as string, accountId: row.stalwart_account_id as string,
+      password: auth.credential(res) };
+  }
+
+  function sendingAudit(context: ReturnType<typeof sendingContext>, row: any) {
+    return { actor: context.actor, actorRole: context.role, mailbox: row.address as string, from: context.address };
   }
 
   app.post("/api/mailboxes/:id/uploads", sendLimiter, express.raw({ type: "application/octet-stream", limit: "20mb" }), async (req, res) => {
     const row = mailbox(req.params.id, res);
-    const identity = sendingIdentity(res);
-    if (row.id !== identity.mailboxId) return res.status(404).json({ error: "邮箱不存在" });
+    const identity = sendingContext(row, res);
     const type = parse(z.string().min(1).max(255).regex(/^[\w.+-]+\/[\w.+-]+$/), req.query.type ?? "application/octet-stream");
     const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     if (!body.length) return res.status(400).json({ error: "附件为空" });
-    const uploaded = await stalwart.uploadAs(identity.address!, auth.credential(res), identity.accountId!, body, type);
+    const uploaded = identity.role === "admin"
+      ? await stalwart.uploadAsService(identity.accountId, body, type)
+      : await stalwart.uploadAs(identity.address, identity.password, identity.accountId, body, type);
+    audit(db, req, "message.attachment.upload", "mailbox", String(row.id), { ...sendingAudit(identity, row), size: body.length, type });
     res.status(201).json(uploaded);
   });
 
   app.post("/api/mailboxes/:id/drafts", sendLimiter, async (req, res) => {
     const row = mailbox(req.params.id, res);
-    const identity = sendingIdentity(res);
-    if (row.id !== identity.mailboxId) return res.status(404).json({ error: "邮箱不存在" });
+    const identity = sendingContext(row, res);
     const input = parse(composeSchema, req.body);
-    const result = await stalwart.saveDraftOrSubmit({ ...input, html: input.html ? sanitizeOutgoingHtml(input.html) : undefined,
-      address: identity.address!, password: auth.credential(res), accountId: identity.accountId!, submit: false });
-    audit(db, req, "message.draft.create", "mailbox", String(row.id), { emailId: result.emailId, attachments: input.attachments.length });
+    const outgoing = { ...input, html: input.html ? sanitizeOutgoingHtml(input.html) : undefined,
+      address: identity.address, accountId: identity.accountId, submit: false };
+    const result = identity.role === "admin"
+      ? await stalwart.saveDraftOrSubmitAsService(outgoing)
+      : await stalwart.saveDraftOrSubmit({ ...outgoing, password: identity.password });
+    audit(db, req, "message.draft.create", "mailbox", String(row.id), { ...sendingAudit(identity, row), emailId: result.emailId, attachments: input.attachments.length });
     res.status(201).json(result);
   });
 
   app.post("/api/mailboxes/:id/submissions", sendLimiter, async (req, res) => {
     const row = mailbox(req.params.id, res);
-    const identity = sendingIdentity(res);
-    if (row.id !== identity.mailboxId) return res.status(404).json({ error: "邮箱不存在" });
+    const identity = sendingContext(row, res);
     const input = parse(composeSchema, req.body);
     if (!input.to.length && !input.cc.length && !input.bcc.length) return res.status(400).json({ error: "至少需要一个收件人" });
     let inReplyTo: string | undefined;
@@ -503,9 +516,12 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
       inReplyTo = Array.isArray(original.messageId) ? original.messageId[0] : undefined;
       references = [...new Set([...(Array.isArray(original.references) ? original.references : []), ...(inReplyTo ? [inReplyTo] : [])])].slice(-50);
     }
-    const result = await stalwart.saveDraftOrSubmit({ ...input, html: input.html ? sanitizeOutgoingHtml(input.html) : undefined,
-      address: identity.address!, password: auth.credential(res), accountId: identity.accountId!, submit: true, inReplyTo, references });
-    audit(db, req, "message.submit", "mailbox", String(row.id), { emailId: result.emailId, submissionId: result.submissionId, recipients: input.to.length + input.cc.length + input.bcc.length });
+    const outgoing = { ...input, html: input.html ? sanitizeOutgoingHtml(input.html) : undefined,
+      address: identity.address, accountId: identity.accountId, submit: true, inReplyTo, references };
+    const result = identity.role === "admin"
+      ? await stalwart.saveDraftOrSubmitAsService(outgoing)
+      : await stalwart.saveDraftOrSubmit({ ...outgoing, password: identity.password });
+    audit(db, req, "message.submit", "mailbox", String(row.id), { ...sendingAudit(identity, row), emailId: result.emailId, submissionId: result.submissionId, recipients: input.to.length + input.cc.length + input.bcc.length });
     res.status(202).json(result);
   });
 

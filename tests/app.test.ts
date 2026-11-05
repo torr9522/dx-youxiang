@@ -20,6 +20,8 @@ const createMailboxCalls: { localPart: string; domainId: string; description: st
 const deleteMailboxCalls: string[] = [];
 const translationCalls: Array<{ protocol: string; input: string }> = [];
 const submissionCalls: any[] = [];
+const serviceSubmissionCalls: any[] = [];
+const uploadCalls: Array<{ mode: "mailbox" | "service"; accountId: string; size: number; type: string }> = [];
 let createdAccountSequence = 0;
 const inlinePng = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 
@@ -88,8 +90,16 @@ const fake = {
   },
   authenticateMailbox: async (address: string, password: string) => address === "a@example.test" && password === "mailbox-password"
     ? { session: {}, accountIds: new Set(["account-a"]) } : null,
-  uploadAs: async (_address: string, _password: string, accountId: string, body: Buffer, type: string) => ({ accountId, blobId: "uploaded-blob", type, size: body.length }),
+  uploadAs: async (_address: string, _password: string, accountId: string, body: Buffer, type: string) => {
+    uploadCalls.push({ mode: "mailbox", accountId, size: body.length, type });
+    return { accountId, blobId: "uploaded-blob", type, size: body.length };
+  },
+  uploadAsService: async (accountId: string, body: Buffer, type: string) => {
+    uploadCalls.push({ mode: "service", accountId, size: body.length, type });
+    return { accountId, blobId: "uploaded-blob", type, size: body.length };
+  },
   saveDraftOrSubmit: async (input: any) => { submissionCalls.push(input); return { emailId: "created-email", submissionId: input.submit ? "submission-1" : undefined, status: input.submit ? "queued" : "draft" }; },
+  saveDraftOrSubmitAsService: async (input: any) => { serviceSubmissionCalls.push(input); return { emailId: "created-email", submissionId: input.submit ? "submission-1" : undefined, status: input.submit ? "queued" : "draft" }; },
   updateMailbox: async (accountId: string, patch: Record<string, unknown>) => { updateMailboxCalls.push({ accountId, patch }); },
   createMailbox: async (localPart: string, domainId: string, description: string) => {
     createMailboxCalls.push({ localPart, domainId, description });
@@ -338,13 +348,51 @@ describe("API access control", () => {
     const mailboxCookie = login.headers["set-cookie"][0].split(";")[0];
     const sent = await request(context.app).post("/api/mailboxes/1/submissions")
       .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
-      .send({ to: ["recipient@example.test"], subject: "Hello", text: "Body", from: "b@example.test" }).expect(202);
+      .send({ to: ["recipient@example.test"], subject: "Hello", text: "Body", from: "b@example.test", accountId: "account-b" }).expect(202);
     expect(sent.body).toMatchObject({ status: "queued", submissionId: "submission-1" });
     expect(submissionCalls.at(-1)).toMatchObject({ address: "a@example.test", accountId: "account-a", submit: true, to: ["recipient@example.test"] });
     expect(submissionCalls.at(-1).from).toBeUndefined();
+    expect(submissionCalls.at(-1).accountId).toBe("account-a");
     await request(context.app).post("/api/mailboxes/2/submissions")
       .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
       .send({ to: ["recipient@example.test"], text: "blocked" }).expect(404);
+
+    context.db.db.prepare("UPDATE mailboxes SET email_send=0 WHERE id=1").run();
+    await request(context.app).post("/api/mailboxes/1/submissions")
+      .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
+      .send({ to: ["recipient@example.test"], text: "permission changed" }).expect(403);
+  });
+
+  it("lets an admin use only a selected send-enabled mailbox through the service identity", async () => {
+    context.db.db.prepare("UPDATE mailboxes SET status='active',email_send=1 WHERE id=1").run();
+    context.db.db.prepare("UPDATE mailboxes SET status='active',email_send=0 WHERE id=2").run();
+
+    const upload = await request(context.app).post("/api/mailboxes/1/uploads?type=text%2Fplain")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).set("content-type", "application/octet-stream")
+      .send(Buffer.from("attachment")).expect(201);
+    expect(upload.body).toMatchObject({ accountId: "account-a", blobId: "uploaded-blob" });
+    expect(uploadCalls.at(-1)).toEqual({ mode: "service", accountId: "account-a", size: 10, type: "text/plain" });
+
+    await request(context.app).post("/api/mailboxes/1/drafts")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ to: [], subject: "Draft", text: "Body", from: "b@example.test", accountId: "account-b", attachments: [] }).expect(201);
+    expect(serviceSubmissionCalls.at(-1)).toMatchObject({ address: "a@example.test", accountId: "account-a", submit: false });
+    expect(serviceSubmissionCalls.at(-1).from).toBeUndefined();
+
+    await request(context.app).post("/api/mailboxes/1/submissions")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ to: ["recipient@example.test"], subject: "Admin send", text: "Body", from: "b@example.test", accountId: "account-b" }).expect(202);
+    expect(serviceSubmissionCalls.at(-1)).toMatchObject({ address: "a@example.test", accountId: "account-a", submit: true });
+    expect(serviceSubmissionCalls.at(-1).from).toBeUndefined();
+
+    await request(context.app).post("/api/mailboxes/2/drafts")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ subject: "blocked", text: "blocked" }).expect(403);
+    await request(context.app).post("/api/mailboxes/2/submissions")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ to: ["recipient@example.test"], text: "blocked" }).expect(403);
+
+    const auditRow = context.db.db.prepare("SELECT details_json FROM audit_log WHERE action='message.submit' ORDER BY id DESC LIMIT 1").get() as { details_json: string };
+    expect(JSON.parse(auditRow.details_json)).toMatchObject({ actor: "admin", actorRole: "admin", mailbox: "a@example.test", from: "a@example.test" });
+    expect(auditRow.details_json).not.toContain("Body");
   });
 
   it("rejects mailbox passwords shorter than six characters", async () => {
