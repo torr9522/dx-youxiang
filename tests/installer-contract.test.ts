@@ -98,6 +98,9 @@ describe("native installer contracts", () => {
   it("waits for bounded application readiness before accepting or rolling back an upgrade", async () => {
     const upgrade = await readFile("scripts/upgrade.sh", "utf8");
 
+    expect(upgrade).toContain("DX_YOUXIANG_ARCHIVE_PATH must be absolute");
+    expect(upgrade).toContain("DX_YOUXIANG_ARCHIVE_SHA256 is required");
+    expect(upgrade).toContain("DX_YOUXIANG_ARCHIVE_SHA256 must contain 64 hex characters");
     expect(upgrade).toContain("wait_ready()");
     expect(upgrade).toContain('test "$wait_attempt" -lt 45 || return 1');
     expect(upgrade).toContain("sleep 1");

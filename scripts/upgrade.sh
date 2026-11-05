@@ -16,13 +16,23 @@ trap 'rm -rf -- "$tmp"' EXIT INT TERM
 
 archive="dx-youxiang-v${version}.tar.gz"
 release_base="https://github.com/torr9522/dx-youxiang/releases/download/v${version}"
-curl --proto '=https' --tlsv1.2 -fsSL \
-  "$release_base/$archive" -o "$tmp/$archive"
-curl --proto '=https' --tlsv1.2 -fsSL \
-  "$release_base/SHA256SUMS" -o "$tmp/SHA256SUMS"
-expected=$(awk -v file="$archive" '$2 == file {print $1}' "$tmp/SHA256SUMS")
-checksum_count=$(awk -v file="$archive" '$2 == file {count++} END {print count + 0}' "$tmp/SHA256SUMS")
-if test -z "$expected" || test "$checksum_count" -ne 1; then echo "missing or duplicate checksum for $archive" >&2; exit 1; fi
+if test -n "${DX_YOUXIANG_ARCHIVE_PATH:-}"; then
+  case "$DX_YOUXIANG_ARCHIVE_PATH" in /*) ;; *) echo "DX_YOUXIANG_ARCHIVE_PATH must be absolute" >&2; exit 1;; esac
+  test -f "$DX_YOUXIANG_ARCHIVE_PATH" -a -r "$DX_YOUXIANG_ARCHIVE_PATH" || { echo "local release archive is not readable" >&2; exit 1; }
+  test -n "${DX_YOUXIANG_ARCHIVE_SHA256:-}" || { echo "DX_YOUXIANG_ARCHIVE_SHA256 is required" >&2; exit 1; }
+  case $DX_YOUXIANG_ARCHIVE_SHA256 in *[!0-9a-fA-F]*) echo "DX_YOUXIANG_ARCHIVE_SHA256 must be hexadecimal" >&2; exit 1;; esac
+  test "${#DX_YOUXIANG_ARCHIVE_SHA256}" -eq 64 || { echo "DX_YOUXIANG_ARCHIVE_SHA256 must contain 64 hex characters" >&2; exit 1; }
+  cp "$DX_YOUXIANG_ARCHIVE_PATH" "$tmp/$archive"
+  expected=$(printf '%s' "$DX_YOUXIANG_ARCHIVE_SHA256" | tr '[:upper:]' '[:lower:]')
+else
+  curl --proto '=https' --tlsv1.2 -fsSL \
+    "$release_base/$archive" -o "$tmp/$archive"
+  curl --proto '=https' --tlsv1.2 -fsSL \
+    "$release_base/SHA256SUMS" -o "$tmp/SHA256SUMS"
+  expected=$(awk -v file="$archive" '$2 == file {print $1}' "$tmp/SHA256SUMS")
+  checksum_count=$(awk -v file="$archive" '$2 == file {count++} END {print count + 0}' "$tmp/SHA256SUMS")
+  if test -z "$expected" || test "$checksum_count" -ne 1; then echo "missing or duplicate checksum for $archive" >&2; exit 1; fi
+fi
 printf '%s  %s\n' "$expected" "$tmp/$archive" | sha256sum -c -
 mkdir "$tmp/source"
 tar -xzf "$tmp/$archive" --strip-components=1 -C "$tmp/source"
