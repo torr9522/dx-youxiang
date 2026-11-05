@@ -9,8 +9,8 @@ import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import type { Config } from "./config.js";
 import { AppDatabase, type MailboxRow } from "./db.js";
-import { AuthService, audit } from "./security.js";
-import { presentMessage, remoteImageUrls } from "./mail.js";
+import { AuthService, audit, type AuthenticatedSession } from "./security.js";
+import { presentMessage, remoteImageUrls, sanitizeOutgoingHtml } from "./mail.js";
 import { fetchRemoteImage, MAX_IMAGE_BYTES, openRemoteImage, readLimitedImage } from "./remote-images.js";
 import { StalwartClient, StalwartError } from "./stalwart.js";
 import { clearTranslationCache, getTranslationSettings, saveTranslationSettings, testTranslationConnection, translateMessage, translationCacheCount, translationStatus } from "./translation.js";
@@ -18,6 +18,7 @@ import { OpenAiCompatibleProvider, providerEndpoint, type TranslationProvider } 
 
 const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/, "邮箱前缀格式无效");
 const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(256);
+const loginIdentifier = z.string().trim().min(1).max(254);
 const bulkMailboxLimit = 100;
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
@@ -71,7 +72,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     },
     referrerPolicy: { policy: "no-referrer" },
   }));
-  app.use(express.json({ limit: "128kb" }));
+  app.use(express.json({ limit: "2mb" }));
   app.use(cookieParser());
 
   app.get("/healthz", (_req, res) => res.json({ status: "ok", component: "web" }));
@@ -99,23 +100,53 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, skipSuccessfulRequests: true });
   app.post("/api/auth/login", loginLimiter, async (req, res) => {
-    const input = parse(z.object({ username: z.string().max(64), password: z.string().max(512) }), req.body);
-    const ok = await auth.verifyLogin(input.username, input.password);
+    const input = parse(z.object({ username: loginIdentifier, password: z.string().max(512) }), req.body);
+    const normalized = input.username.toLowerCase();
+    let identity: { role: "admin" | "mailbox_user"; mailboxId?: number; credential?: string; username: string } | null = null;
+    if (await auth.verifyLogin(input.username, input.password)) {
+      identity = { role: "admin", username: config.ADMIN_USERNAME };
+    } else if (normalized.includes("@")) {
+      const row = db.db.prepare(`SELECT id,address,stalwart_account_id FROM mailboxes
+        WHERE address=? AND external_login=1 AND status='active'`).get(normalized) as { id: number; address: string; stalwart_account_id: string } | undefined;
+      if (row) {
+        const verified = await stalwart.authenticateMailbox(row.address, input.password).catch(() => null);
+        if (verified?.accountIds.has(row.stalwart_account_id)) {
+          identity = { role: "mailbox_user", mailboxId: row.id, credential: input.password, username: row.address };
+        }
+      }
+    }
+    const ok = identity !== null;
     db.db.prepare("INSERT INTO login_attempts(ip,username,success) VALUES(?,?,?)").run(req.ip ?? "unknown", input.username.slice(0, 64), ok ? 1 : 0);
     db.db.prepare("DELETE FROM login_attempts WHERE created_at < datetime('now','-30 days')").run();
-    if (!ok) {
-      audit(db, req, "login.failed", "admin", undefined, { username: input.username });
+    if (!identity) {
+      audit(db, req, "login.failed", "identity", undefined, { username: input.username.slice(0, 254) });
       return res.status(401).json({ error: "用户名或密码错误" });
     }
-    const csrfToken = auth.createSession(req, res);
-    audit(db, req, "login.success", "admin");
-    res.json({ username: config.ADMIN_USERNAME, csrfToken });
+    const csrfToken = auth.createSession(req, res, identity);
+    audit(db, req, "login.success", identity.role, identity.mailboxId ? String(identity.mailboxId) : undefined);
+    res.json({ username: identity.username, role: identity.role, mailboxId: identity.mailboxId ?? null, csrfToken });
   });
 
   app.use("/api", auth.authenticate);
   app.use("/api", auth.csrf);
-  app.get("/api/auth/session", (_req, res) => res.json({ username: config.ADMIN_USERNAME, csrfToken: res.locals.csrfToken }));
-  app.post("/api/auth/logout", (req, res) => { auth.destroySession(req, res); audit(db, req, "logout", "admin"); res.status(204).end(); });
+  app.get("/api/auth/session", (_req, res) => {
+    const identity = res.locals.auth as AuthenticatedSession;
+    res.json({
+      username: identity.role === "admin" ? config.ADMIN_USERNAME : identity.address,
+      role: identity.role,
+      mailboxId: identity.mailboxId,
+      emailSend: identity.role === "admin" ? true : identity.emailSend,
+      csrfToken: res.locals.csrfToken,
+    });
+  });
+  app.post("/api/auth/logout", (req, res) => {
+    const identity = res.locals.auth as AuthenticatedSession;
+    auth.destroySession(req, res);
+    audit(db, req, "logout", identity.role, identity.mailboxId ? String(identity.mailboxId) : undefined);
+    res.status(204).end();
+  });
+
+  app.use(["/api/settings", "/api/domains", "/api/dashboard", "/api/audit"], auth.requireAdmin);
 
   const translationSettingsSchema = z.object({
     protocol: z.enum(["responses", "chat_completions"]).nullable(),
@@ -194,8 +225,11 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   app.get("/api/mailboxes", async (req, res) => {
     const search = String(req.query.search ?? "").slice(0, 128);
+    const identity = res.locals.auth as AuthenticatedSession;
+    const ownership = identity.role === "mailbox_user" ? "AND m.id=?" : "";
+    const args = identity.role === "mailbox_user" ? [`%${search}%`, `%${search}%`, identity.mailboxId] : [`%${search}%`, `%${search}%`];
     const rows = db.db.prepare(`SELECT m.*,d.name domain FROM mailboxes m JOIN domains d ON d.id=m.domain_id
-      WHERE m.address LIKE ? OR m.note LIKE ? ORDER BY m.created_at DESC`).all(`%${search}%`, `%${search}%`) as any[];
+      WHERE (m.address LIKE ? OR m.note LIKE ?) ${ownership} ORDER BY m.created_at DESC`).all(...args) as any[];
     const withStats = req.query.stats === "1";
     const result = await Promise.all(rows.map(async (row) => {
       if (!withStats) return row;
@@ -237,14 +271,14 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     }
   }
 
-  app.post("/api/mailboxes", async (req, res) => {
+  app.post("/api/mailboxes", auth.requireAdmin, async (req, res) => {
     const input = parse(z.object({ localPart, domainId: z.number().int().positive(), note: z.string().max(500).default("") }), req.body);
     const domain = db.db.prepare("SELECT * FROM domains WHERE id=? AND enabled=1").get(input.domainId) as any;
     if (!domain) return res.status(400).json({ error: "域名未配置或未启用" });
     res.status(201).json(await createMailboxRecord({ localPart: input.localPart, domain, note: input.note }, req));
   });
 
-  app.post("/api/mailboxes/bulk", async (req, res) => {
+  app.post("/api/mailboxes/bulk", auth.requireAdmin, async (req, res) => {
     const input = parse(z.object({
       localParts: z.array(z.string().max(256)).min(1, "至少提供一个邮箱前缀").max(bulkMailboxLimit, `每次最多创建 ${bulkMailboxLimit} 个邮箱`),
     }), req.body);
@@ -289,16 +323,18 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     });
   });
 
-  function mailbox(idValue: string) {
+  function mailbox(idValue: unknown, res: Response) {
     const id = parse(routeId, idValue);
+    const identity = res.locals.auth as AuthenticatedSession;
+    if (identity.role === "mailbox_user" && identity.mailboxId !== id) throw Object.assign(new Error("邮箱不存在"), { status: 404 });
     const row = db.db.prepare(`SELECT m.*,d.name domain FROM mailboxes m JOIN domains d ON d.id=m.domain_id WHERE m.id=?`).get(id) as any;
     if (!row) throw Object.assign(new Error("邮箱不存在"), { status: 404 });
     return row;
   }
 
-  app.get("/api/mailboxes/:id", (req, res) => res.json(mailbox(req.params.id)));
-  app.patch("/api/mailboxes/:id/note", async (req, res) => {
-    const row = mailbox(req.params.id);
+  app.get("/api/mailboxes/:id", (req, res) => res.json(mailbox(req.params.id, res)));
+  app.patch("/api/mailboxes/:id/note", auth.requireAdmin, async (req, res) => {
+    const row = mailbox(req.params.id, res);
     const { note } = parse(z.object({ note: z.string().max(500) }), req.body);
     await stalwart.updateMailbox(row.stalwart_account_id, { description: note || row.address });
     db.db.prepare("UPDATE mailboxes SET note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(note, row.id);
@@ -306,19 +342,39 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     res.status(204).end();
   });
 
-  app.patch("/api/mailboxes/:id/external-login", async (req, res) => {
-    const row = mailbox(req.params.id);
+  app.patch("/api/mailboxes/:id/external-login", auth.requireAdmin, async (req, res) => {
+    const row = mailbox(req.params.id, res);
     const input = parse(z.object({ enabled: z.boolean(), password: mailboxPassword.optional() }).superRefine((value, ctx) => {
       if (value.enabled && !value.password) ctx.addIssue({ code: "custom", message: "开启外部登录时必须设置新密码", path: ["password"] });
     }), req.body);
-    await stalwart.setExternalLogin(row.stalwart_account_id, input.enabled, input.password);
+    await stalwart.setMailboxPermissions(row.stalwart_account_id, input.enabled, row.email_send === 1, input.password);
     db.db.prepare("UPDATE mailboxes SET external_login=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(input.enabled ? 1 : 0, row.id);
     audit(db, req, input.enabled ? "mailbox.login.enable" : "mailbox.login.disable", "mailbox", String(row.id));
     res.status(204).end();
   });
 
-  app.post("/api/mailboxes/:id/password", async (req, res) => {
-    const row = mailbox(req.params.id);
+  app.patch("/api/mailboxes/:id/send-permission", auth.requireAdmin, async (req, res) => {
+    const row = mailbox(req.params.id, res);
+    const { enabled } = parse(z.object({ enabled: z.boolean() }), req.body);
+    await stalwart.setMailboxPermissions(row.stalwart_account_id, row.external_login === 1, enabled);
+    db.db.prepare("UPDATE mailboxes SET email_send=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(enabled ? 1 : 0, row.id);
+    audit(db, req, enabled ? "mailbox.send.enable" : "mailbox.send.disable", "mailbox", String(row.id));
+    res.status(204).end();
+  });
+
+  app.get("/api/mailboxes/:id/client-config", (req, res) => {
+    const row = mailbox(req.params.id, res);
+    res.json({
+      username: row.address,
+      externalLogin: row.external_login === 1,
+      emailSend: row.email_send === 1,
+      imap: { host: config.MAIL_HOST, port: 993, security: "SSL/TLS" },
+      smtp: { host: config.MAIL_HOST, port: 587, security: "STARTTLS", alternative: { port: 465, security: "SSL/TLS" } },
+    });
+  });
+
+  app.post("/api/mailboxes/:id/password", auth.requireAdmin, async (req, res) => {
+    const row = mailbox(req.params.id, res);
     const { password } = parse(z.object({ password: mailboxPassword }), req.body);
     await stalwart.updateMailbox(row.stalwart_account_id, { credentials: { "0": { "@type": "Password", secret: password } } });
     audit(db, req, "mailbox.password.reset", "mailbox", String(row.id));
@@ -337,13 +393,13 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     }
   }
 
-  app.delete("/api/mailboxes/:id", async (req, res) => {
-    const row = mailbox(req.params.id);
+  app.delete("/api/mailboxes/:id", auth.requireAdmin, async (req, res) => {
+    const row = mailbox(req.params.id, res);
     await deleteMailboxRecord(row, req);
     res.status(204).end();
   });
 
-  app.post("/api/mailboxes/bulk-delete", async (req, res) => {
+  app.post("/api/mailboxes/bulk-delete", auth.requireAdmin, async (req, res) => {
     const input = parse(z.object({
       ids: z.array(z.number().int().positive()).min(1, "至少选择一个邮箱").max(bulkMailboxLimit, `每次最多删除 ${bulkMailboxLimit} 个邮箱`),
     }), req.body);
@@ -368,7 +424,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.get("/api/mailboxes/:id/messages", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     const input = parse(z.object({
       q: z.string().max(256).optional(),
       field: z.enum(["text", "from", "subject", "body"]).default("text"),
@@ -376,12 +432,85 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
       position: queryInteger(0, 0, Number.MAX_SAFE_INTEGER),
       limit: queryInteger(50, 1, 100),
       order: z.enum(["asc", "desc"]).default("desc"),
+      folder: z.enum(["inbox", "sent", "drafts"]).default("inbox"),
     }), req.query);
-    res.json(await stalwart.listMessages(row.stalwart_account_id, { query: input.q, field: input.field, read: input.read, position: input.position, limit: input.limit, ascending: input.order === "asc" }));
+    res.json(await stalwart.listMessages(row.stalwart_account_id, { folder: input.folder, query: input.q, field: input.field, read: input.read, position: input.position, limit: input.limit, ascending: input.order === "asc" }));
+  });
+
+  const sendLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 40, standardHeaders: "draft-8", legacyHeaders: false });
+  const recipient = z.string().trim().toLowerCase().email().max(254);
+  const attachment = z.object({
+    blobId: z.string().min(1).max(512),
+    type: z.string().min(1).max(255).regex(/^[\w.+-]+\/[\w.+-]+$/),
+    name: z.string().min(1).max(180).transform((value) => value.replace(/[\r\n"\\/]/g, "_")),
+    size: z.number().int().nonnegative().max(20 * 1024 * 1024),
+  });
+  const composeSchema = z.object({
+    to: z.array(recipient).max(50).default([]),
+    cc: z.array(recipient).max(50).default([]),
+    bcc: z.array(recipient).max(50).default([]),
+    subject: z.string().max(998).default(""),
+    text: z.string().max(1_000_000).default(""),
+    html: z.string().max(1_000_000).optional(),
+    attachments: z.array(attachment).max(20).default([]),
+    replyToEmailId: z.string().min(1).max(512).optional(),
+  }).superRefine((value, ctx) => {
+    if (value.to.length + value.cc.length + value.bcc.length > 50) ctx.addIssue({ code: "custom", message: "每封邮件最多 50 个收件人" });
+  });
+
+  function sendingIdentity(res: Response) {
+    const identity = res.locals.auth as AuthenticatedSession;
+    if (identity.role !== "mailbox_user" || !identity.mailboxId || !identity.address || !identity.accountId) {
+      throw Object.assign(new Error("仅邮箱用户可以提交邮件"), { status: 403 });
+    }
+    if (!identity.emailSend) throw Object.assign(new Error("当前邮箱未启用发信权限"), { status: 403 });
+    return identity;
+  }
+
+  app.post("/api/mailboxes/:id/uploads", sendLimiter, express.raw({ type: "application/octet-stream", limit: "20mb" }), async (req, res) => {
+    const row = mailbox(req.params.id, res);
+    const identity = sendingIdentity(res);
+    if (row.id !== identity.mailboxId) return res.status(404).json({ error: "邮箱不存在" });
+    const type = parse(z.string().min(1).max(255).regex(/^[\w.+-]+\/[\w.+-]+$/), req.query.type ?? "application/octet-stream");
+    const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!body.length) return res.status(400).json({ error: "附件为空" });
+    const uploaded = await stalwart.uploadAs(identity.address!, auth.credential(res), identity.accountId!, body, type);
+    res.status(201).json(uploaded);
+  });
+
+  app.post("/api/mailboxes/:id/drafts", sendLimiter, async (req, res) => {
+    const row = mailbox(req.params.id, res);
+    const identity = sendingIdentity(res);
+    if (row.id !== identity.mailboxId) return res.status(404).json({ error: "邮箱不存在" });
+    const input = parse(composeSchema, req.body);
+    const result = await stalwart.saveDraftOrSubmit({ ...input, html: input.html ? sanitizeOutgoingHtml(input.html) : undefined,
+      address: identity.address!, password: auth.credential(res), accountId: identity.accountId!, submit: false });
+    audit(db, req, "message.draft.create", "mailbox", String(row.id), { emailId: result.emailId, attachments: input.attachments.length });
+    res.status(201).json(result);
+  });
+
+  app.post("/api/mailboxes/:id/submissions", sendLimiter, async (req, res) => {
+    const row = mailbox(req.params.id, res);
+    const identity = sendingIdentity(res);
+    if (row.id !== identity.mailboxId) return res.status(404).json({ error: "邮箱不存在" });
+    const input = parse(composeSchema, req.body);
+    if (!input.to.length && !input.cc.length && !input.bcc.length) return res.status(400).json({ error: "至少需要一个收件人" });
+    let inReplyTo: string | undefined;
+    let references: string[] | undefined;
+    if (input.replyToEmailId) {
+      const original = await stalwart.getMessage(row.stalwart_account_id, input.replyToEmailId);
+      if (!original) return res.status(404).json({ error: "回复的原邮件不存在" });
+      inReplyTo = Array.isArray(original.messageId) ? original.messageId[0] : undefined;
+      references = [...new Set([...(Array.isArray(original.references) ? original.references : []), ...(inReplyTo ? [inReplyTo] : [])])].slice(-50);
+    }
+    const result = await stalwart.saveDraftOrSubmit({ ...input, html: input.html ? sanitizeOutgoingHtml(input.html) : undefined,
+      address: identity.address!, password: auth.credential(res), accountId: identity.accountId!, submit: true, inReplyTo, references });
+    audit(db, req, "message.submit", "mailbox", String(row.id), { emailId: result.emailId, submissionId: result.submissionId, recipients: input.to.length + input.cc.length + input.bcc.length });
+    res.status(202).json(result);
   });
 
   app.get("/api/mailboxes/:id/messages/:emailId", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
     if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
     const presented = presentMessage(message, { mailboxId: row.id, emailId: req.params.emailId, sessionSecret: config.SESSION_SECRET });
@@ -390,7 +519,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
 
   app.post("/api/mailboxes/:id/messages/:emailId/translate", translationLimiter, async (req, res) => {
     const emailId = String(req.params.emailId);
-    const row = mailbox(String(req.params.id));
+    const row = mailbox(req.params.id, res);
     const message = await stalwart.getMessage(row.stalwart_account_id, emailId);
     if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
     const presented = presentMessage(message, { mailboxId: row.id, emailId, sessionSecret: config.SESSION_SECRET });
@@ -421,7 +550,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.patch("/api/mailboxes/:id/messages/:emailId/read", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     const { read } = parse(z.object({ read: z.boolean() }), req.body);
     if (!await stalwart.getMessage(row.stalwart_account_id, req.params.emailId)) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
     await stalwart.setSeen(row.stalwart_account_id, req.params.emailId, read);
@@ -429,7 +558,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.delete("/api/mailboxes/:id/messages/:emailId", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     if (!await stalwart.getMessage(row.stalwart_account_id, req.params.emailId)) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
     await stalwart.deleteMessage(row.stalwart_account_id, req.params.emailId);
     db.db.prepare("DELETE FROM translation_cache WHERE mailbox_id=? AND email_id=?").run(row.id, req.params.emailId);
@@ -438,7 +567,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.get("/api/mailboxes/:id/messages/:emailId/attachments/:blobId", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
     const attachment = message?.attachments?.find((item: any) => item.blobId === req.params.blobId);
     if (!attachment) return res.status(404).json({ error: "附件不存在于当前邮件" });
@@ -455,7 +584,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.get("/api/mailboxes/:id/messages/:emailId/inline-images/:blobId", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
     const attachment = message?.attachments?.find((item: any) => item.blobId === req.params.blobId && item.cid);
     if (!attachment) return res.status(404).json({ error: "内嵌图片不存在于当前邮件" });
@@ -475,7 +604,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   });
 
   app.get("/api/mailboxes/:id/messages/:emailId/remote-images/:token", async (req, res) => {
-    const row = mailbox(req.params.id);
+    const row = mailbox(req.params.id, res);
     const message = await stalwart.getMessage(row.stalwart_account_id, req.params.emailId);
     if (!message) return res.status(404).json({ error: "邮件不存在于当前邮箱" });
     let imageUrl: string;

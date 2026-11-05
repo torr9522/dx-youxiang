@@ -1,22 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, ImageIcon, Inbox, Languages, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Forward, ImageIcon, Inbox, Languages, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Reply, ReplyAll, Search, Settings2, Trash2 } from "lucide-react";
 import { api, type Domain, type Mailbox, type MessageDetail, type MessageSummary } from "../api";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
+import { ComposeDialog } from "../components/ComposeDialog";
+import { Modal } from "../components/Modal";
 import { copyText } from "../lib/clipboard";
 
 const PAGE_SIZE = 50;
 type MessagePage = { list: MessageSummary[]; total: number; position: number };
 type MobileStage = "mailboxes" | "messages" | "detail";
 type ReadFilter = "all" | "unread" | "read";
+type Folder = "inbox" | "sent" | "drafts";
+type ComposeMode = "compose" | "reply" | "replyAll" | "forward";
 
-function messagesPath(mailboxId: number, position: number, query: string, field: string, read: ReadFilter, order: string) {
-  const params = new URLSearchParams({ q: query, field, read, order, position: String(position), limit: String(PAGE_SIZE) });
+function messagesPath(mailboxId: number, position: number, query: string, field: string, read: ReadFilter, order: string, folder: Folder) {
+  const params = new URLSearchParams({ q: query, field, read, order, folder, position: String(position), limit: String(PAGE_SIZE) });
   return `/api/mailboxes/${mailboxId}/messages?${params}`;
 }
 
 type TranslatedMessage = { html: string; plain: string; cached: boolean; partial: boolean };
 
 type MailWorkspaceProps = {
+  isAdmin?: boolean;
   initialMailboxId?: number;
   initialMessageId?: string;
   onMailboxRoute?: (mailboxId: number) => void;
@@ -27,7 +32,7 @@ type MailWorkspaceProps = {
   onSettings?: () => void;
 };
 
-export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailboxRoute, onMessageRoute, onMessageListRoute, onInboxRoute, onManage, onSettings }: MailWorkspaceProps) {
+export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMessageId, onMailboxRoute, onMessageRoute, onMessageListRoute, onInboxRoute, onManage, onSettings }: MailWorkspaceProps) {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [mailboxSearch, setMailboxSearch] = useState("");
@@ -37,11 +42,14 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
   const [messageSearch, setMessageSearch] = useState("");
   const [searchField, setSearchField] = useState("text");
   const [readFilter, setReadFilter] = useState<ReadFilter>("all");
+  const [folder, setFolder] = useState<Folder>("inbox");
   const [order] = useState("desc");
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(0);
   const [mobileStage, setMobileStage] = useState<MobileStage>(initialMessageId ? "detail" : initialMailboxId ? "messages" : "mailboxes");
   const [createOpen, setCreateOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<ComposeMode | null>(null);
+  const [clientInfoOpen, setClientInfoOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showRemoteImages, setShowRemoteImages] = useState(false);
   const [remoteImageStatus, setRemoteImageStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -73,11 +81,11 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
     window.setTimeout(() => setToast(""), 1600);
   };
 
-  const loadMessages = async (mailboxId: number, nextPosition = 0, query = messageSearch, field = searchField, read = readFilter, nextOrder = order) => {
+  const loadMessages = async (mailboxId: number, nextPosition = 0, query = messageSearch, field = searchField, read = readFilter, nextOrder = order, nextFolder = folder) => {
     const currentRequest = ++requestId.current;
     setError("");
     try {
-      const page = await api<MessagePage>(messagesPath(mailboxId, nextPosition, query, field, read, nextOrder));
+      const page = await api<MessagePage>(messagesPath(mailboxId, nextPosition, query, field, read, nextOrder, nextFolder));
       if (currentRequest !== requestId.current) return;
       setMessages(page.list);
       setTotal(page.total);
@@ -143,7 +151,7 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
     let active = true;
     Promise.all([
       api<Mailbox[]>("/api/mailboxes?stats=1&search="),
-      api<Domain[]>("/api/domains"),
+      isAdmin ? api<Domain[]>("/api/domains") : Promise.resolve([]),
     ]).then(async ([rows, domainRows]) => {
       if (!active) return;
       setMailboxes(rows);
@@ -347,7 +355,7 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
       <div className="border-b border-slate-200 px-3 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2 px-1">
           <div><h1 className="text-sm font-semibold text-slate-900">邮箱</h1><p className="mt-0.5 text-xs text-slate-500">{mailboxes.length} 个账户</p></div>
-          <button onClick={() => setCreateOpen(true)} title="创建邮箱" aria-label="创建邮箱" className="focus-ring grid h-9 w-9 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={17} /></button>
+          {isAdmin && <button onClick={() => setCreateOpen(true)} title="创建邮箱" aria-label="创建邮箱" className="focus-ring grid h-9 w-9 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={17} /></button>}
         </div>
         <form className="relative mt-3" onSubmit={(event) => { event.preventDefault(); void loadMailboxes(mailboxSearch); }}>
           <Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} />
@@ -365,7 +373,7 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
         </div>)}
         {!mailboxes.length && <div className="px-5 py-14 text-center text-sm text-slate-500"><Inbox className="mx-auto mb-2 text-slate-300" size={28} />没有匹配的邮箱</div>}
       </div>
-      <div className="border-t border-slate-200 p-3"><button onClick={onManage} className="focus-ring flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm text-slate-600 hover:bg-white hover:text-blue-700"><Settings2 size={16} />邮箱管理</button></div>
+      {isAdmin ? <div className="border-t border-slate-200 p-3"><button onClick={onManage} className="focus-ring flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm text-slate-600 hover:bg-white hover:text-blue-700"><Settings2 size={16} />邮箱管理</button></div> : <div className="border-t border-slate-200 p-3"><button onClick={() => setClientInfoOpen(true)} className="focus-ring flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm text-slate-600 hover:bg-white hover:text-blue-700"><Settings2 size={16} />邮件客户端设置</button></div>}
     </section>
 
     <section aria-label="邮件列表" className={`${mobileStage === "messages" ? "flex" : "hidden"} min-h-0 flex-col border-r border-slate-200 bg-white md:flex`}>
@@ -373,8 +381,10 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
         <div className="flex min-h-8 items-center gap-2">
           <button onClick={() => { appliedRoute.current = "\0"; onInboxRoute?.(); setMobileStage("mailboxes"); }} aria-label="返回邮箱列表" className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"><ArrowLeft size={18} /></button>
           <div className="min-w-0 flex-1"><div title={selectedMailbox?.address} className="truncate text-sm font-semibold text-slate-900">{selectedMailbox?.address ?? "选择邮箱"}</div><div className="mt-0.5 text-xs text-slate-500">{total} 封邮件</div></div>
+          {!isAdmin && selectedMailbox?.email_send === 1 && <button title="写邮件" aria-label="写邮件" onClick={() => setComposeMode("compose")} className="focus-ring grid h-8 w-8 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={15} /></button>}
           {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void loadMessages(selectedMailboxId, position)} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
         </div>
+        <div className="mt-3 grid grid-cols-3 rounded-md bg-slate-100 p-0.5 text-xs">{([['inbox','收件箱'],['sent','已发送'],['drafts','草稿']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => { setFolder(value); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, "", "text", "all", "desc", value); }} className={`h-8 rounded ${folder === value ? "bg-white font-medium text-blue-700 shadow-sm" : "text-slate-600"}`}>{label}</button>)}</div>
         <form className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2" onSubmit={(event) => { event.preventDefault(); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0); }}>
           <div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} /><input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)} placeholder="搜索当前邮箱" aria-label="搜索当前邮箱" className="form-control h-9 w-full min-w-0 pl-9 pr-3 text-sm" /></div>
           <button aria-label="执行邮件搜索" className="btn-secondary focus-ring grid h-9 w-9 place-items-center p-0"><Search size={15} /></button>
@@ -414,6 +424,7 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
               <time className="mt-1 block text-xs text-slate-400">{new Date(selectedMessage.receivedAt).toLocaleString("zh-CN")}</time>
             </div>
             <div className="flex shrink-0 gap-1">
+              {!isAdmin && selectedMailbox?.email_send === 1 && <><button title="回复" aria-label="回复" onClick={() => setComposeMode("reply")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Reply size={17} /></button><button title="回复全部" aria-label="回复全部" onClick={() => setComposeMode("replyAll")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><ReplyAll size={17} /></button><button title="转发" aria-label="转发" onClick={() => setComposeMode("forward")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Forward size={17} /></button></>}
               <button title={selectedMessage.keywords?.["$seen"] ? "标记未读" : "标记已读"} aria-label={selectedMessage.keywords?.["$seen"] ? "标记未读" : "标记已读"} onClick={() => void markRead(!selectedMessage.keywords?.["$seen"])} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700">{selectedMessage.keywords?.["$seen"] ? <Mail size={17} /> : <MailOpen size={17} />}</button>
               <button title="删除邮件" aria-label="删除邮件" onClick={() => void deleteMessage()} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-red-600 hover:bg-red-50"><Trash2 size={17} /></button>
             </div>
@@ -436,7 +447,7 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
               ? <button type="button" onClick={() => setTranslationMode("original")} className="focus-ring shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100">查看原文</button>
               : selectedMessage.translation.enabled
                 ? <button type="button" disabled={translationLoading} onClick={() => void translateCurrentMessage()} className="focus-ring shrink-0 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50">{translationLoading ? "正在翻译..." : translatedMessage ? "查看译文" : "翻译正文"}</button>
-                : <button type="button" onClick={onSettings} disabled={!onSettings} className="focus-ring shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">前往设置</button>}
+                : isAdmin ? <button type="button" onClick={onSettings} disabled={!onSettings} className="focus-ring shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">前往设置</button> : null}
           </div>}
           {displayHtml ? <div ref={mailBodyRef} className="mail-html" dangerouslySetInnerHTML={{ __html: displayHtml }} /> : <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-700">{displayPlain || "（邮件正文为空）"}</pre>}
           {!!selectedMessage.attachments?.length && <section className="mt-8 border-t border-slate-200 pt-4"><h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-800"><Paperclip size={16} />附件 ({selectedMessage.attachments.length})</h3><div className="grid gap-2 sm:grid-cols-2">{selectedMessage.attachments.map((attachment) => <a key={attachment.blobId} href={`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(selectedMessage.id)}/attachments/${encodeURIComponent(attachment.blobId)}`} className="focus-ring flex min-h-12 min-w-0 items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50"><FileText size={18} className="shrink-0 text-blue-600" /><span className="min-w-0 flex-1"><span className="block truncate">{attachment.name || "附件"}</span>{typeof attachment.size === "number" && <span className="mt-0.5 block text-xs text-slate-400">{formatBytes(attachment.size)}</span>}</span><Download size={16} className="shrink-0 text-slate-400" /></a>)}</div></section>}
@@ -453,8 +464,17 @@ export function MailWorkspacePage({ initialMailboxId, initialMessageId, onMailbo
       onMailboxRoute?.(created.id);
       showToast("邮箱已创建");
     }} />}
+    {composeMode && selectedMailbox && <ComposeDialog mailbox={selectedMailbox} mode={composeMode} message={composeMode === "compose" ? null : selectedMessage} onClose={() => setComposeMode(null)} onDone={(kind) => { setComposeMode(null); showToast(kind === "draft" ? "草稿已保存" : "邮件已提交到投递队列"); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, "", "text", "all", "desc", kind === "draft" ? "drafts" : "sent"); setFolder(kind === "draft" ? "drafts" : "sent"); }} />}
+    {clientInfoOpen && selectedMailbox && <ClientInfo mailbox={selectedMailbox} onClose={() => setClientInfoOpen(false)} />}
     {toast && <div role="status" className="mobile-toast fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"><Check size={15} />{toast}</div>}
   </div>;
+}
+
+function ClientInfo({ mailbox, onClose }: { mailbox: Mailbox; onClose: () => void }) {
+  const [data, setData] = useState<{ username: string; externalLogin: boolean; emailSend: boolean; imap: { host: string; port: number; security: string }; smtp: { host: string; port: number; security: string; alternative?: { port: number; security: string } } } | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { void api<typeof data>(`/api/mailboxes/${mailbox.id}/client-config`).then(setData).catch((caught) => setError((caught as Error).message)); }, [mailbox.id]);
+  return <Modal title="邮件客户端设置" onClose={onClose}>{error && <p className="text-sm text-red-700">{error}</p>}{data && <div className="grid gap-4 text-sm"><section><h3 className="font-medium text-slate-900">IMAP 收信</h3><dl className="mt-2 grid grid-cols-[5rem_1fr] gap-y-1 text-slate-600"><dt>服务器</dt><dd>{data.imap.host}</dd><dt>端口</dt><dd>{data.imap.port}</dd><dt>加密</dt><dd>{data.imap.security}</dd></dl></section><section><h3 className="font-medium text-slate-900">SMTP 发信</h3><dl className="mt-2 grid grid-cols-[5rem_1fr] gap-y-1 text-slate-600"><dt>服务器</dt><dd>{data.smtp.host}</dd><dt>端口</dt><dd>{data.smtp.port}</dd><dt>加密</dt><dd>{data.smtp.security}</dd>{data.smtp.alternative && <><dt>备用</dt><dd>{data.smtp.alternative.port} / {data.smtp.alternative.security}</dd></>}</dl></section><section className="rounded-md bg-slate-50 p-3"><dl className="grid grid-cols-[5rem_1fr] gap-y-1 text-slate-600"><dt>用户名</dt><dd className="break-all">{data.username}</dd><dt>密码</dt><dd>当前邮箱的外部登录密码</dd></dl></section><p className="text-xs leading-5 text-slate-500">外部登录关闭时无法认证；允许发信关闭时仍可通过 IMAP 收信，但不能通过 SMTP 提交邮件。</p></div>}</Modal>;
 }
 
 function formatDate(value: string) {

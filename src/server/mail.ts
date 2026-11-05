@@ -17,6 +17,17 @@ const emailStyles = [
 ];
 const inlineImageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
+export function sanitizeOutgoingHtml(value: string) {
+  return sanitizeHtml(value, {
+    allowedTags: ["a", "b", "blockquote", "br", "div", "em", "h1", "h2", "h3", "hr", "i", "li", "ol", "p", "span", "strong", "u", "ul"],
+    allowedAttributes: { a: ["href", "title"], "*": ["style"] },
+    allowedStyles: { "*": { "text-align": [/^(?:left|right|center)$/], "font-weight": [/^(?:normal|bold|[1-9]00)$/], "font-style": [/^(?:normal|italic)$/], "text-decoration": [/^(?:none|underline)$/] } },
+    allowedSchemes: ["http", "https", "mailto"],
+    allowProtocolRelative: false,
+    disallowedTagsMode: "discard",
+  });
+}
+
 type PresentationContext = { mailboxId: number; emailId: string; sessionSecret: string };
 
 function normalizeCid(value: string) {

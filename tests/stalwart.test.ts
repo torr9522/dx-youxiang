@@ -88,4 +88,39 @@ describe("Stalwart account provisioning", () => {
     expect(disabled.enabledPermissions.authenticate).toBeUndefined();
     expect(disabled.disabledPermissions).toEqual({ authenticate: true, emailSend: true });
   });
+
+  it("grants submission only when external login and sending are both enabled", async () => {
+    let payload: any;
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ methodResponses: [["x:Account/set", { updated: { "acc-a": null } }, "account-update"]] }), { status: 200 });
+    }));
+    await new StalwartClient(config).setMailboxPermissions("acc-a", true, true);
+    const permissions = payload.methodCalls[0][1].update["acc-a"].permissions;
+    expect(permissions.enabledPermissions).toMatchObject({ authenticate: true, emailSend: true, jmapEmailCreate: true, jmapEmailSubmissionCreate: true, jmapBlobUpload: true });
+    expect(permissions.disabledPermissions).toEqual({});
+  });
+
+  it("submits a user-authenticated JMAP message with a server-derived identity and Sent move", async () => {
+    const requests: Array<{ headers: any; payload: any }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      requests.push({ headers: init?.headers, payload });
+      if (requests.length === 1) return new Response(JSON.stringify({ methodResponses: [
+        ["Mailbox/query", { ids: ["drafts-id"] }, "drafts"],
+        ["Mailbox/query", { ids: ["sent-id"] }, "sent"],
+        ["Identity/get", { list: [{ id: "identity-id", email: "a@example.test" }] }, "identities"],
+      ] }), { status: 200 });
+      return new Response(JSON.stringify({ methodResponses: [
+        ["Email/set", { created: { message: { id: "email-id" } } }, "email-create"],
+        ["EmailSubmission/set", { created: { submission: { id: "submission-id" } } }, "submission-create"],
+      ] }), { status: 200 });
+    }));
+    const result = await new StalwartClient(config).saveDraftOrSubmit({ address: "a@example.test", password: "mailbox-password", accountId: "acc-a", to: ["b@example.test"], cc: [], bcc: [], subject: "Hello", text: "Body", attachments: [], submit: true });
+    expect(result).toEqual({ emailId: "email-id", submissionId: "submission-id", status: "queued" });
+    expect(requests[1].headers.authorization).toBe(`Basic ${Buffer.from("a@example.test:mailbox-password").toString("base64")}`);
+    expect(requests[1].payload.methodCalls[0][1].create.message.from).toEqual([{ email: "a@example.test" }]);
+    expect(requests[1].payload.methodCalls[1][1]).toMatchObject({ accountId: "acc-a", create: { submission: { identityId: "identity-id", emailId: "#message" } } });
+    expect(requests[1].payload.methodCalls[1][1].onSuccessUpdateEmail["#submission"]).toMatchObject({ "mailboxIds/drafts-id": null, "mailboxIds/sent-id": true, "keywords/$draft": null });
+  });
 });

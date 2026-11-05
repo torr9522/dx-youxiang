@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Inbox, LockKeyhole, ShieldCheck } from "lucide-react";
-import { api } from "../api";
+import { api, type SessionIdentity } from "../api";
 
-export function LoginPage({ onLogin }: { onLogin: (csrf: string) => void }) {
-  const [username, setUsername] = useState("admin");
+export function LoginPage({ onLogin }: { onLogin: (identity: SessionIdentity) => void }) {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -15,16 +15,16 @@ export function LoginPage({ onLogin }: { onLogin: (csrf: string) => void }) {
       </div>
       <form className="surface-panel p-6" onSubmit={async (event) => {
         event.preventDefault(); setBusy(true); setError("");
-        try { const data = await api<{ csrfToken: string }>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }); onLogin(data.csrfToken); }
+        try { const data = await api<SessionIdentity>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }); onLogin(data); }
         catch (err) { setError((err as Error).message); } finally { setBusy(false); }
       }}>
-        <div className="mb-5 flex items-center gap-2 text-sm font-medium text-slate-800"><LockKeyhole size={17} />管理员登录</div>
-        <label className="mb-4 block text-sm text-slate-700">用户名<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
+        <div className="mb-5 flex items-center gap-2 text-sm font-medium text-slate-800"><LockKeyhole size={17} />登录邮箱</div>
+        <label className="mb-4 block text-sm text-slate-700">管理员账号或邮箱地址<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
         <label className="block text-sm text-slate-700">密码<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="form-control mt-1.5 h-11 w-full px-3" /></label>
         {error && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <button disabled={busy} className="btn-primary focus-ring mt-5 h-11 w-full text-sm">{busy ? "正在验证..." : "登录"}</button>
       </form>
-      <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-slate-400"><ShieldCheck size={13} />安全会话 · 仅接收模式</div>
+      <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-slate-400"><ShieldCheck size={13} />安全会话</div>
     </main>
   </div>;
 }

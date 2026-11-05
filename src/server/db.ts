@@ -10,6 +10,7 @@ export type MailboxRow = {
   domain_id: number;
   note: string;
   external_login: number;
+  email_send: number;
   status: string;
   created_at: string;
   updated_at: string;
@@ -46,6 +47,7 @@ export class AppDatabase {
         domain_id INTEGER NOT NULL REFERENCES domains(id) ON DELETE RESTRICT,
         note TEXT NOT NULL DEFAULT '',
         external_login INTEGER NOT NULL DEFAULT 0 CHECK(external_login IN (0,1)),
+        email_send INTEGER NOT NULL DEFAULT 0 CHECK(email_send IN (0,1)),
         status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','deleting','error')),
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -54,6 +56,9 @@ export class AppDatabase {
       CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY,
         csrf_token TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin','mailbox_user')),
+        mailbox_id INTEGER REFERENCES mailboxes(id) ON DELETE CASCADE,
+        stalwart_credential_ciphertext TEXT,
         ip TEXT,
         user_agent TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -110,6 +115,16 @@ export class AppDatabase {
       );
       CREATE INDEX IF NOT EXISTS translation_cache_message ON translation_cache(mailbox_id,email_id);
     `);
+    this.addColumn("mailboxes", "email_send", "INTEGER NOT NULL DEFAULT 0 CHECK(email_send IN (0,1))");
+    this.addColumn("sessions", "role", "TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin','mailbox_user'))");
+    this.addColumn("sessions", "mailbox_id", "INTEGER REFERENCES mailboxes(id) ON DELETE CASCADE");
+    this.addColumn("sessions", "stalwart_credential_ciphertext", "TEXT");
+    this.db.exec("CREATE INDEX IF NOT EXISTS sessions_mailbox ON sessions(mailbox_id)");
+  }
+
+  private addColumn(table: string, column: string, definition: string) {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   health(): boolean {

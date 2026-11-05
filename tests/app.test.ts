@@ -14,10 +14,12 @@ let csrf = "";
 let cookie = "";
 const listCalls: { accountId: string; options: Record<string, unknown> }[] = [];
 const externalLoginCalls: { accountId: string; enabled: boolean; password?: string }[] = [];
+const permissionCalls: { accountId: string; externalLogin: boolean; emailSend: boolean; password?: string }[] = [];
 const updateMailboxCalls: { accountId: string; patch: Record<string, unknown> }[] = [];
 const createMailboxCalls: { localPart: string; domainId: string; description: string }[] = [];
 const deleteMailboxCalls: string[] = [];
 const translationCalls: Array<{ protocol: string; input: string }> = [];
+const submissionCalls: any[] = [];
 let createdAccountSequence = 0;
 const inlinePng = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 
@@ -80,6 +82,14 @@ const fake = {
   setSeen: async () => undefined,
   deleteMessage: async () => undefined,
   setExternalLogin: async (accountId: string, enabled: boolean, password?: string) => { externalLoginCalls.push({ accountId, enabled, password }); },
+  setMailboxPermissions: async (accountId: string, externalLogin: boolean, emailSend: boolean, password?: string) => {
+    permissionCalls.push({ accountId, externalLogin, emailSend, password });
+    externalLoginCalls.push({ accountId, enabled: externalLogin, password });
+  },
+  authenticateMailbox: async (address: string, password: string) => address === "a@example.test" && password === "mailbox-password"
+    ? { session: {}, accountIds: new Set(["account-a"]) } : null,
+  uploadAs: async (_address: string, _password: string, accountId: string, body: Buffer, type: string) => ({ accountId, blobId: "uploaded-blob", type, size: body.length }),
+  saveDraftOrSubmit: async (input: any) => { submissionCalls.push(input); return { emailId: "created-email", submissionId: input.submit ? "submission-1" : undefined, status: input.submit ? "queued" : "draft" }; },
   updateMailbox: async (accountId: string, patch: Record<string, unknown>) => { updateMailboxCalls.push({ accountId, patch }); },
   createMailbox: async (localPart: string, domainId: string, description: string) => {
     createMailboxCalls.push({ localPart, domainId, description });
@@ -146,6 +156,24 @@ describe("API access control", () => {
 
   it("requires authentication", async () => {
     await request(context.app).get("/api/mailboxes").expect(401);
+  });
+
+  it("authenticates a mailbox at the same login endpoint and enforces role and account isolation", async () => {
+    context.db.db.prepare("UPDATE mailboxes SET external_login=1 WHERE id=1").run();
+    const login = await request(context.app).post("/api/auth/login").send({ username: "A@EXAMPLE.TEST", password: "mailbox-password" }).expect(200);
+    expect(login.body).toMatchObject({ username: "a@example.test", role: "mailbox_user", mailboxId: 1 });
+    const mailboxCookie = login.headers["set-cookie"][0].split(";")[0];
+    const own = await request(context.app).get("/api/mailboxes").set("Cookie", mailboxCookie).expect(200);
+    expect(own.body).toHaveLength(1);
+    expect(own.body[0]).toMatchObject({ id: 1, address: "a@example.test" });
+    await request(context.app).get("/api/mailboxes/2").set("Cookie", mailboxCookie).expect(404);
+    await request(context.app).get("/api/domains").set("Cookie", mailboxCookie).expect(403);
+    await request(context.app).post("/api/mailboxes/1/submissions").set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
+      .send({ to: ["recipient@example.test"], subject: "blocked", text: "blocked" }).expect(403);
+    const stored = context.db.db.prepare("SELECT stalwart_credential_ciphertext FROM sessions WHERE role='mailbox_user'").get() as { stalwart_credential_ciphertext: string };
+    expect(stored.stalwart_credential_ciphertext).not.toContain("mailbox-password");
+    context.db.db.prepare("UPDATE mailboxes SET external_login=0 WHERE id=1").run();
+    await request(context.app).get("/api/auth/session").set("Cookie", mailboxCookie).expect(401);
   });
 
   it("does not rewrite unknown API or static paths as SPA pages", async () => {
@@ -274,7 +302,7 @@ describe("API access control", () => {
     expect(response.body).toMatchObject({ total: 3, position: 50 });
     expect(listCalls.at(-1)).toEqual({
       accountId: "account-a",
-      options: { query: "needle", field: "subject", read: "unread", ascending: true, position: 50, limit: 25 },
+      options: { folder: "inbox", query: "needle", field: "subject", read: "unread", ascending: true, position: 50, limit: 25 },
     });
   });
 
@@ -297,7 +325,26 @@ describe("API access control", () => {
       .set("Cookie", cookie).set("x-csrf-token", csrf)
       .send({ password: "aaaaaa" }).expect(204);
     expect(externalLoginCalls.at(-1)).toEqual({ accountId: "account-a", enabled: true, password: "123456" });
+    expect(permissionCalls.at(-1)).toEqual({ accountId: "account-a", externalLogin: true, emailSend: false, password: "123456" });
     expect(updateMailboxCalls.at(-1)).toEqual({ accountId: "account-a", patch: { credentials: { "0": { "@type": "Password", secret: "aaaaaa" } } } });
+  });
+
+  it("keeps sending independent, derives the sender from the mailbox session and queues through Stalwart", async () => {
+    await request(context.app).patch("/api/mailboxes/1/send-permission")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ enabled: true }).expect(204);
+    expect(permissionCalls.at(-1)).toEqual({ accountId: "account-a", externalLogin: true, emailSend: true, password: undefined });
+    context.db.db.prepare("UPDATE mailboxes SET external_login=1,email_send=1 WHERE id=1").run();
+    const login = await request(context.app).post("/api/auth/login").send({ username: "a@example.test", password: "mailbox-password" }).expect(200);
+    const mailboxCookie = login.headers["set-cookie"][0].split(";")[0];
+    const sent = await request(context.app).post("/api/mailboxes/1/submissions")
+      .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
+      .send({ to: ["recipient@example.test"], subject: "Hello", text: "Body", from: "b@example.test" }).expect(202);
+    expect(sent.body).toMatchObject({ status: "queued", submissionId: "submission-1" });
+    expect(submissionCalls.at(-1)).toMatchObject({ address: "a@example.test", accountId: "account-a", submit: true, to: ["recipient@example.test"] });
+    expect(submissionCalls.at(-1).from).toBeUndefined();
+    await request(context.app).post("/api/mailboxes/2/submissions")
+      .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
+      .send({ to: ["recipient@example.test"], text: "blocked" }).expect(404);
   });
 
   it("rejects mailbox passwords shorter than six characters", async () => {
