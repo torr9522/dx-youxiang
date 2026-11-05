@@ -4,6 +4,18 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-05
+
+### Fixed
+
+- Show compose, reply, reply-all and forward actions to administrators when the selected mailbox has sending enabled, while hiding them for every send-disabled mailbox.
+- Allow administrator drafts, attachments and JMAP submission through the protected service identity without requiring or exposing a mailbox password.
+
+### Security
+
+- Re-resolve the selected mailbox and enforce its current `emailSend` state for every upload, draft and submission request.
+- Derive the Stalwart account and From identity on the server for both roles, reject cross-mailbox requests, and audit the real actor separately from the sending mailbox.
+
 ## [0.1.5] - 2026-11-04
 
 ### Added

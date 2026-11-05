@@ -8,8 +8,8 @@ Important invariants:
 - Resolve every email and attachment through the selected application mailbox row.
 - Keep receive enabled and external login/send disabled for every new mailbox.
 - Enable `emailSend` and JMAP submission permissions only when both per-mailbox switches are enabled.
-- Derive `From` and JMAP account identity from the mailbox-bound session; never accept them from the browser.
-- Use mailbox-user credentials for JMAP submission and keep SMTP relay unauthenticated access denied.
+- Derive `From` and JMAP account identity from the server-resolved mailbox row; never accept them from the browser.
+- Use mailbox-user credentials for mailbox-user JMAP submission. For an administrator, use the protected service identity only after rechecking selected-mailbox ownership and `emailSend`; keep SMTP relay unauthenticated access denied.
 - Passwords may be accepted only over authenticated CSRF-protected routes and must never be logged or returned.
 - Keep mail HTML sanitization and remote-image blocking server-side.
 - Test backup changes with an isolated restore, not by copying live RocksDB.

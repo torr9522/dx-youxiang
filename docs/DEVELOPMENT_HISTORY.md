@@ -52,3 +52,9 @@ The rename does not intentionally alter APIs, the database schema, Stalwart acco
 - Mailbox webmail adds Inbox, Sent, Drafts, compose, reply, reply-all, forward and account-scoped attachments. The backend derives From and submits with the mailbox user's own Stalwart credential.
 - Stalwart exposes IMAPS 993, Submission 587 STARTTLS and Submissions 465 TLS. AUTH is unavailable on 25 by default, authenticated senders must match, and the host firewall permits direct outbound TCP 25 only for Stalwart.
 - A controlled Gmail direct-delivery acceptance used JMAP EmailSubmission and Stalwart's direct MX route. Gmail returned `250 2.1.5 OK`, and the received headers reported SPF, DKIM and DMARC passing. The message was placed in Spam, so the result proves authenticated SMTP acceptance but not established sender reputation or Inbox placement.
+
+## Administrator Compose Permission Repair
+
+- The v0.1.5 workspace rendered compose/reply/forward only when `isAdmin` was false, so an administrator lost the webmail actions even when the selected mailbox had `emailSend=true`.
+- The v0.1.5 upload, draft and submission routes also accepted only a mailbox-user session. The repair introduces an explicit administrator service-identity path while retaining the mailbox-user credential path.
+- Both roles now depend on the current selected mailbox `emailSend` value. The backend fixes the target account and From identity from SQLite on every request, rejects cross-mailbox and disabled-mailbox attempts, and records the real actor separately from the sending mailbox.

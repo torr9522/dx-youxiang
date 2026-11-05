@@ -26,7 +26,8 @@ Dx Youxiang
 |-- Webmail sending
 |   |-- server-side Drafts and Sent
 |   |-- compose, reply, reply-all, forward and attachments
-|   `-- user-authenticated JMAP EmailSubmission
+|   |-- user-authenticated JMAP EmailSubmission
+|   `-- administrator compose for a selected send-enabled mailbox
 |-- Mail clients
 |   |-- IMAPS 993
 |   |-- Submission 587 STARTTLS and 465 TLS

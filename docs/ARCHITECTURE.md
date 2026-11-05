@@ -20,7 +20,7 @@ Mailbox routes contain only the application's numeric ID. The backend resolves i
 
 Ordinary accounts use a custom explicit permission set. `emailReceive`, read JMAP and standard IMAP operations are present. `authenticate` is added only while external login is enabled. `emailSend`, JMAP creation/upload/submission and SMTP AUTH are usable only while external login and send permission are both enabled. Stalwart's default SMTP policy advertises AUTH only on TLS-protected non-25 listeners, requires authentication there, matches the authenticated sender, and rejects unauthenticated relay.
 
-The root-protected service identity holds `impersonate`, account/domain management, TLS reload, application JMAP reads and every permission it must legally grant under Stalwart's no-privilege-escalation rule. Browser mail submission never uses it: drafts, blob uploads and EmailSubmission use the mailbox user's encrypted session credential and Stalwart enforces that account's permissions and identity.
+The root-protected service identity holds `impersonate`, account/domain management, TLS reload, application JMAP access and every permission it must legally grant under Stalwart's no-privilege-escalation rule. A mailbox-user upload, draft or submission uses that user's encrypted session credential. An administrator has no mailbox plaintext credential, so an administrator operation uses the protected service identity only after the backend re-resolves the selected mailbox, confirms its current `emailSend` value, fixes the target account ID and From address from SQLite, and records the administrator actor separately from the sending mailbox. The service credential never reaches the browser.
 
 ## Existing IMAP sessions
 
@@ -64,6 +64,7 @@ Internet MTA
 
 ```text
 mailbox-user browser -> role/account/send checks -> user-authenticated JMAP Blob/Email/EmailSubmission
+administrator browser -> selected-mailbox/send checks -> service-identity JMAP impersonation
 mail client -> 587 STARTTLS or 465 implicit TLS -> Stalwart AUTH + sender match
 Stalwart queue -> DNS MX -> direct SMTP 25 delivery
 ```

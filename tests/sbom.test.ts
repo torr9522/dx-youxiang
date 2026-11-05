@@ -25,8 +25,8 @@ describe("release SBOM", () => {
 
     const root = bom.dependencies.find((dependency: { ref: string }) => dependency.ref === bom.metadata.component["bom-ref"]);
     expect(root.dependsOn).toEqual(expect.arrayContaining([
-      "dx-youxiang@0.1.5|react@19.3.1",
-      "dx-youxiang@0.1.5|react-dom@19.3.1",
+      "dx-youxiang@0.1.6|react@19.3.1",
+      "dx-youxiang@0.1.6|react-dom@19.3.1",
       "stalwart-mail-server@1.0.1",
       "node.js@26.13.0",
       "caddy@2.11.7",

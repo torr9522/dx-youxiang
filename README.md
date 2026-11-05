@@ -2,14 +2,14 @@
 
 Dx 邮箱 (`dx-youxiang`) is a mailbox administration and webmail application for [Stalwart Mail Server](https://stalw.art/). It creates independent Stalwart users, keeps every account isolated, and provides one role-aware login for the administrator and enabled mailbox users.
 
-Latest stable version: `v0.1.5`.
+Latest stable version: `v0.1.6`.
 
 ## What it provides
 
 - Real mailbox accounts, never aliases or a shared catch-all inbox
 - Chinese administrator UI with mailbox, message, attachment and domain management
 - Per-mailbox external-login and send switches, both disabled by default
-- Mailbox-user webmail with Inbox, Sent, Drafts, compose, reply, forward and attachments
+- Administrator and mailbox-user webmail with Inbox, Sent, Drafts, compose, reply, forward and attachments, constrained by each mailbox's send switch
 - IMAPS plus authenticated SMTP Submission on 587 STARTTLS and 465 implicit TLS
 - JMAP access scoped server-side to the selected mailbox account ID
 - Sanitized HTML mail, blocked remote images and safe attachment downloads
@@ -29,10 +29,10 @@ Node.js 26 LTS, Stalwart 1.0.1 and Caddy 2.11.7 are pinned. The installer verifi
 
 ## Installation
 
-Every version is installed from its immutable GitHub Release asset. A minimal Debian installation may contain neither `curl` nor `wget`, so the single command first installs the TLS bootstrap dependencies with Debian's package manager. Example for an explicitly pinned `v0.1.5` installation:
+Every version is installed from its immutable GitHub Release asset. A minimal Debian installation may contain neither `curl` nor `wget`, so the single command first installs the TLS bootstrap dependencies with Debian's package manager. Example for an explicitly pinned `v0.1.6` installation:
 
 ```sh
-apt-get update && apt-get install -y ca-certificates curl tar && DX_YOUXIANG_VERSION=0.1.5 bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.5/install.sh)
+apt-get update && apt-get install -y ca-certificates curl tar && DX_YOUXIANG_VERSION=0.1.6 bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.6/install.sh)
 ```
 
 The installer asks only for the mail domain, mail hostname, and administrator password. It verifies public and authoritative A/MX answers, release checksums, pinned upstream binaries, Caddy configuration, TLS issuance, systemd services, firewall policy, initial encrypted backup, and readiness. Public SMTP remains gated until trusted TLS, readiness, and the initial encrypted backup pass. The installer never edits DNS.
@@ -40,7 +40,7 @@ The installer asks only for the mail domain, mail hostname, and administrator pa
 Install the latest stable release with:
 
 ```sh
-apt-get update && apt-get install -y ca-certificates curl tar && bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.5/install.sh)
+apt-get update && apt-get install -y ca-certificates curl tar && bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.6/install.sh)
 ```
 
 See [Deployment](docs/DEPLOYMENT.md), [Architecture](docs/ARCHITECTURE.md), [Operations](docs/OPERATIONS.md), and [Backup and restore](docs/BACKUP_RESTORE.md) before using the server for important mail.
@@ -63,7 +63,7 @@ Use `.env.example` with fictional local values. Never copy production environmen
 
 ## Security model
 
-The browser authenticates only to Dx 邮箱. Administrators use Argon2id application authentication. Mailbox users use their full address and existing Stalwart password; the session is bound to one SQLite mailbox ID and immutable Stalwart account ID. The backend never accepts a browser-supplied JMAP `accountId` or sender identity. `emailReceive` stays enabled, while `authenticate` follows external login and `emailSend` is effective only when both switches are enabled.
+The browser authenticates only to Dx 邮箱. Administrators use Argon2id application authentication. Mailbox users use their full address and existing Stalwart password; the session is bound to one SQLite mailbox ID and immutable Stalwart account ID. The backend never accepts a browser-supplied JMAP `accountId` or sender identity. Administrator sending is also bound to the selected server-resolved mailbox and cannot bypass `emailSend=false`. `emailReceive` stays enabled, while `authenticate` follows external login and mailbox-client sending is effective only when both switches are enabled.
 
 The Stalwart HTTP/JMAP listener and Node application bind to loopback. Public mail listeners are SMTP 25, IMAPS 993, Submission 587 STARTTLS and Submissions 465 implicit TLS. POP3 and ManageSieve are absent. A project-owned nftables table permits new outbound TCP 25 only for the Stalwart service user and rejects other processes' new SMTP connections.
 
