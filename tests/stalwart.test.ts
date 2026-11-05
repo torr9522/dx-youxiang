@@ -160,4 +160,117 @@ describe("Stalwart account provisioning", () => {
       create: { submission: { identityId: "identity-id", emailId: "#message" } },
     });
   });
+
+  it("discovers standard folders by JMAP role and exposes junk counts", async () => {
+    let payload: any;
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ methodResponses: [["Mailbox/get", { list: [
+        { id: "inbox-id", name: "Inbox", role: "inbox", totalEmails: 4, unreadEmails: 2 },
+        { id: "junk-id", name: "Junk Mail", role: "junk", totalEmails: 3, unreadEmails: 1 },
+        { id: "trash-id", name: "Trash", role: "trash", totalEmails: 0, unreadEmails: 0 },
+      ] }, "mailbox-folders"]] }), { status: 200 });
+    }));
+
+    const folders = await new StalwartClient(config).listFolders("acc-a");
+    expect(payload.methodCalls[0][1]).toEqual({ accountId: "acc-a", properties: ["id", "name", "role", "totalEmails", "unreadEmails"] });
+    expect(folders.find((folder) => folder.role === "junk")).toEqual({ role: "junk", id: "junk-id", name: "Junk Mail", totalEmails: 3, unreadEmails: 1 });
+    expect(folders.find((folder) => folder.role === "sent")).toMatchObject({ id: null, totalEmails: 0, unreadEmails: 0 });
+  });
+
+  it("queries junk on the server instead of filtering an inbox page", async () => {
+    const payloads: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      payloads.push(payload);
+      return payload.methodCalls[0][0] === "Mailbox/query"
+        ? new Response(JSON.stringify({ methodResponses: [["Mailbox/query", { ids: ["junk-id"] }, "inbox-query"]] }), { status: 200 })
+        : new Response(JSON.stringify({ methodResponses: [
+          ["Email/query", { ids: ["spam-1"], total: 1, position: 0 }, "eq"],
+          ["Email/get", { list: [{ id: "spam-1", subject: "Server result" }] }, "eg"],
+        ] }), { status: 200 });
+    }));
+
+    await new StalwartClient(config).listMessages("acc-a", { folder: "junk", query: "needle", position: 50, limit: 25 });
+    expect(payloads[0].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { role: "junk" } });
+    expect(payloads[1].methodCalls[0][1]).toMatchObject({ accountId: "acc-a", filter: { inMailbox: "junk-id", text: "needle" }, position: 50, limit: 25, calculateTotal: true });
+  });
+
+  it("moves messages with Email/set patches while preserving ids and unrelated memberships", async () => {
+    const payloads: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      payloads.push(payload);
+      const method = payload.methodCalls[0][0];
+      if (method === "Mailbox/get") return new Response(JSON.stringify({ methodResponses: [["Mailbox/get", { list: [
+        { id: "inbox-id", role: "inbox" }, { id: "junk-id", role: "junk" }, { id: "trash-id", role: "trash" },
+      ] }, "mailbox-folders"]] }), { status: 200 });
+      if (method === "Email/get") return new Response(JSON.stringify({ methodResponses: [["Email/get", {
+        list: [{ id: "mail-1", mailboxIds: { "inbox-id": true, "archive-id": true }, keywords: { "$seen": true } }],
+        notFound: ["foreign-mail"],
+      }, "email-action-get"]] }), { status: 200 });
+      return new Response(JSON.stringify({ methodResponses: [["Email/set", { updated: { "mail-1": null } }, "email-action-set"]] }), { status: 200 });
+    }));
+
+    const result = await new StalwartClient(config).manageMessages("acc-a", ["mail-1", "foreign-mail", "mail-1"], "markSpam");
+    expect(result).toMatchObject({ total: 2, succeeded: 1, failed: 1, succeededIds: ["mail-1"] });
+    expect(payloads[2].methodCalls[0][1]).toEqual({
+      accountId: "acc-a",
+      update: { "mail-1": {
+        mailboxIds: { "archive-id": true, "junk-id": true },
+        "keywords/$junk": true,
+        "keywords/$notjunk": null,
+      } },
+    });
+  });
+
+  it("restores junk to inbox and moves junk to Trash without destroying the Email", async () => {
+    const actions: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      const method = payload.methodCalls[0][0];
+      if (method === "Mailbox/get") return new Response(JSON.stringify({ methodResponses: [["Mailbox/get", { list: [
+        { id: "inbox-id", role: "inbox" }, { id: "junk-id", role: "junk" }, { id: "trash-id", role: "trash" },
+      ] }, "mailbox-folders"]] }), { status: 200 });
+      if (method === "Email/get") return new Response(JSON.stringify({ methodResponses: [["Email/get", { list: [
+        { id: "mail-1", mailboxIds: { "junk-id": true }, keywords: { "$junk": true, "$seen": true } },
+      ] }, "email-action-get"]] }), { status: 200 });
+      actions.push(payload.methodCalls[0][1]);
+      return new Response(JSON.stringify({ methodResponses: [["Email/set", { updated: { "mail-1": null } }, "email-action-set"]] }), { status: 200 });
+    }));
+
+    const client = new StalwartClient(config);
+    await client.manageMessages("acc-a", ["mail-1"], "markNotSpam");
+    await client.manageMessages("acc-a", ["mail-1"], "trash");
+    expect(actions[0].update["mail-1"]).toEqual({ mailboxIds: { "inbox-id": true }, "keywords/$junk": null, "keywords/$notjunk": true });
+    expect(actions[1].update["mail-1"]).toEqual({ mailboxIds: { "trash-id": true } });
+    expect(actions.every((action) => action.destroy === undefined)).toBe(true);
+  });
+
+  it("reports Email/set partial failures without counting failed updates as successes", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body));
+      const method = payload.methodCalls[0][0];
+      if (method === "Mailbox/get") return new Response(JSON.stringify({ methodResponses: [["Mailbox/get", { list: [
+        { id: "inbox-id", role: "inbox" }, { id: "junk-id", role: "junk" }, { id: "trash-id", role: "trash" },
+      ] }, "mailbox-folders"]] }), { status: 200 });
+      if (method === "Email/get") return new Response(JSON.stringify({ methodResponses: [["Email/get", { list: [
+        { id: "mail-1", mailboxIds: { "inbox-id": true } },
+        { id: "mail-2", mailboxIds: { "inbox-id": true } },
+      ] }, "email-action-get"]] }), { status: 200 });
+      return new Response(JSON.stringify({ methodResponses: [["Email/set", {
+        updated: { "mail-1": null },
+        notUpdated: { "mail-2": { type: "invalidProperties", description: "Mailbox update rejected" } },
+      }, "email-action-set"]] }), { status: 200 });
+    }));
+
+    const result = await new StalwartClient(config).manageMessages("acc-a", ["mail-1", "mail-2"], "markSpam");
+    expect(result).toEqual({
+      total: 2,
+      succeeded: 1,
+      failed: 1,
+      succeededIds: ["mail-1"],
+      failures: [{ id: "mail-2", reason: "Mailbox update rejected" }],
+    });
+  });
 });

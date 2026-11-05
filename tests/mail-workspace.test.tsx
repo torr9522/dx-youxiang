@@ -41,6 +41,14 @@ const message = {
   preview: "验证码已生成",
 };
 
+const folders = [
+  { role: "inbox", id: "inbox-1", name: "Inbox", totalEmails: 1, unreadEmails: 1 },
+  { role: "sent", id: "sent-1", name: "Sent", totalEmails: 0, unreadEmails: 0 },
+  { role: "drafts", id: "drafts-1", name: "Drafts", totalEmails: 0, unreadEmails: 0 },
+  { role: "junk", id: "junk-1", name: "Junk Mail", totalEmails: 1, unreadEmails: 1 },
+  { role: "trash", id: "trash-1", name: "Trash", totalEmails: 0, unreadEmails: 0 },
+];
+
 function json(data: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } }));
 }
@@ -51,6 +59,7 @@ describe("mail workspace", () => {
     const url = String(input);
     if (url.startsWith("/api/mailboxes?stats=1&search=")) return json(mailboxRows);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
+    if (/^\/api\/mailboxes\/(?:7|8)\/folders$/.test(url)) return json(folders);
     if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return json({ list: [message], total: 1, position: 0 });
     if (url.startsWith("/api/mailboxes/8/messages?") && (!init?.method || init.method === "GET")) return json({ list: [], total: 0, position: 0 });
     if (url === "/api/mailboxes/7/messages/m1" && (!init?.method || init.method === "GET")) return json({ ...message, plain: "Your code is 482731", html: '<p>Your code is 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', blockedRemoteImages: true, verificationCode: "482731", attachments: [{ blobId: "b1", name: "notice.txt", size: 12 }], translation: { language: "eng", label: "英文", translatable: true, configured: true, enabled: true, targetLanguage: "zh-CN" } });
@@ -59,6 +68,10 @@ describe("mail workspace", () => {
     if (url === "/api/mailboxes" && init?.method === "POST") return json({ id: 8, address: "created@example.test", external_login: 0 }, 201);
     if (url === "/api/mailboxes/7/drafts" && init?.method === "POST") return json({ emailId: "draft-1", status: "draft" }, 201);
     if (url === "/api/mailboxes/7/submissions" && init?.method === "POST") return json({ emailId: "sent-1", submissionId: "submission-1", status: "queued" }, 202);
+    if (url === "/api/mailboxes/7/messages/actions" && init?.method === "POST") {
+      const input = JSON.parse(String(init.body));
+      return json({ total: input.emailIds.length, succeeded: input.emailIds.length, failed: 0, succeededIds: input.emailIds, failures: [] });
+    }
     throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
   });
 
@@ -88,6 +101,7 @@ describe("mail workspace", () => {
       "/api/mailboxes/7/messages/m1/read",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ read: true }) }),
     ));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/mailboxes/7/folders")).toHaveLength(2));
   });
 
   it("sends mailbox and message searches to backend query parameters", async () => {
@@ -107,6 +121,49 @@ describe("mail workspace", () => {
 
     await user.selectOptions(screen.getByLabelText("阅读状态"), "unread");
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("read=unread") && String(url).includes("position=0"))).toBe(true));
+  });
+
+  it("opens the role-based Junk folder with server-side search, unread count and a stable route", async () => {
+    const user = userEvent.setup();
+    const onFolderRoute = vi.fn();
+    const onMessageRoute = vi.fn();
+    render(<MailWorkspacePage onManage={() => undefined} onFolderRoute={onFolderRoute} onMessageRoute={onMessageRoute} />);
+    await screen.findByText(message.subject);
+    expect(screen.getByLabelText("1 封未读垃圾邮件")).toBeTruthy();
+
+    await user.click(screen.getByText("垃圾邮件").closest("button")!);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("folder=junk"))).toBe(true));
+    expect(onFolderRoute).toHaveBeenCalledWith(7, "junk");
+    await user.click(await screen.findByText(message.subject));
+    expect(onMessageRoute).toHaveBeenCalledWith(7, "m1", "junk");
+    const detail = screen.getByLabelText("邮件详情");
+    expect(within(detail).getByRole("button", { name: "不是垃圾邮件" })).toBeTruthy();
+    expect(within(detail).getByRole("button", { name: "移到废纸篓" })).toBeTruthy();
+  });
+
+  it("supports current-page selection and bulk spam management without selecting the account", async () => {
+    const user = userEvent.setup();
+    render(<MailWorkspacePage onManage={() => undefined} />);
+    await screen.findByText(message.subject);
+    await user.click(screen.getByLabelText("全选当前页"));
+    expect(screen.getByText("已选 1")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "标记垃圾邮件" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/mailboxes/7/messages/actions" && init?.method === "POST" && init.body === JSON.stringify({ emailIds: ["m1"], action: "markSpam" }))).toBe(true));
+  });
+
+  it("restores selected Junk mail or moves it to Trash with the exact confirmation count", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MailWorkspacePage initialMailboxId={7} initialFolder="junk" onManage={() => undefined} />);
+    await screen.findByText(message.subject);
+    await user.click(screen.getByLabelText("全选当前页"));
+    await user.click(screen.getByRole("button", { name: "不是垃圾邮件" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.body === JSON.stringify({ emailIds: ["m1"], action: "markNotSpam" }))).toBe(true));
+
+    await user.click(screen.getByLabelText("全选当前页"));
+    await user.click(screen.getByRole("button", { name: "移到废纸篓" }));
+    expect(confirm).toHaveBeenCalledWith("确认将选中的 1 封垃圾邮件移到废纸篓？");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.body === JSON.stringify({ emailIds: ["m1"], action: "trash" }))).toBe(true));
   });
 
   it("creates a mailbox through the production API contract", async () => {
@@ -204,7 +261,7 @@ describe("mail workspace", () => {
     await user.click(within(mailboxList).getByText(mailbox.address));
     expect(onMailboxRoute).toHaveBeenCalledWith(7);
     await user.click(await screen.findByText(message.subject));
-    expect(onMessageRoute).toHaveBeenCalledWith(7, "m1");
+    expect(onMessageRoute).toHaveBeenCalledWith(7, "m1", "inbox");
   });
 
   it("applies browser back from a message route without reloading the message list", async () => {

@@ -2,6 +2,10 @@ export type Domain = { id: number; name: string; is_default: number; enabled: nu
 export type Mailbox = { id: number; address: string; local_part: string; domain: string; note: string; external_login: number; email_send: number; status: string; created_at: string; unreadEmails?: number | null; totalEmails?: number | null };
 export type SessionIdentity = { username: string; role: "admin" | "mailbox_user"; mailboxId: number | null; emailSend: boolean; csrfToken: string };
 export type MessageSummary = { id: string; receivedAt: string; from?: { name?: string; email: string }[]; to?: { name?: string; email: string }[]; subject?: string; keywords?: Record<string, boolean>; hasAttachment: boolean; preview?: string; size?: number };
+export type MailFolderRole = "inbox" | "sent" | "drafts" | "junk" | "trash";
+export type MailFolder = { role: MailFolderRole; id: string | null; name: string | null; totalEmails: number; unreadEmails: number };
+export type MessageAction = "markSpam" | "markNotSpam" | "trash";
+export type MessageActionResult = { total: number; succeeded: number; failed: number; succeededIds: string[]; failures: Array<{ id: string; reason: string }> };
 export type MessageDetail = MessageSummary & {
   cc?: { name?: string; email: string }[];
   bcc?: { name?: string; email: string }[];

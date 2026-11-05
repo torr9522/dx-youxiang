@@ -22,6 +22,7 @@ const translationCalls: Array<{ protocol: string; input: string }> = [];
 const submissionCalls: any[] = [];
 const serviceSubmissionCalls: any[] = [];
 const uploadCalls: Array<{ mode: "mailbox" | "service"; accountId: string; size: number; type: string }> = [];
+const messageActionCalls: Array<{ accountId: string; emailIds: string[]; action: string }> = [];
 let createdAccountSequence = 0;
 const inlinePng = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 
@@ -81,6 +82,15 @@ const fake = {
   mailboxStats: async (accountId: string) => accountId === "account-a"
     ? { id: "inbox-a", totalEmails: 3, unreadEmails: 1 }
     : { id: "inbox-b", totalEmails: 0, unreadEmails: 0 },
+  listFolders: async () => [
+    { role: "inbox", id: "inbox-a", name: "Inbox", totalEmails: 3, unreadEmails: 1 },
+    { role: "junk", id: "junk-a", name: "Junk Mail", totalEmails: 1, unreadEmails: 1 },
+    { role: "trash", id: "trash-a", name: "Trash", totalEmails: 0, unreadEmails: 0 },
+  ],
+  manageMessages: async (accountId: string, emailIds: string[], action: string) => {
+    messageActionCalls.push({ accountId, emailIds, action });
+    return { total: emailIds.length, succeeded: emailIds.length, failed: 0, succeededIds: emailIds, failures: [] };
+  },
   setSeen: async () => undefined,
   deleteMessage: async () => undefined,
   setExternalLogin: async (accountId: string, enabled: boolean, password?: string) => { externalLoginCalls.push({ accountId, enabled, password }); },
@@ -316,6 +326,43 @@ describe("API access control", () => {
     });
   });
 
+  it("returns role-based junk folder counts and performs server-side junk queries", async () => {
+    const folders = await request(context.app).get("/api/mailboxes/1/folders").set("Cookie", cookie).expect(200);
+    expect(folders.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "junk", id: "junk-a", totalEmails: 1, unreadEmails: 1 }),
+    ]));
+
+    await request(context.app)
+      .get("/api/mailboxes/1/messages?folder=junk&q=reported&field=subject&position=50&limit=25")
+      .set("Cookie", cookie).expect(200);
+    expect(listCalls.at(-1)).toEqual({
+      accountId: "account-a",
+      options: { folder: "junk", query: "reported", field: "subject", read: "all", ascending: false, position: 50, limit: 25 },
+    });
+  });
+
+  it("binds bulk junk actions to the server-resolved account and records partial-safe metadata", async () => {
+    const before = messageActionCalls.length;
+    const response = await request(context.app).post("/api/mailboxes/1/messages/actions")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ emailIds: ["email-a", "email-a", "email-a2"], action: "markSpam", accountId: "account-b" }).expect(200);
+    expect(response.body).toMatchObject({ total: 2, succeeded: 2, failed: 0, succeededIds: ["email-a", "email-a2"] });
+    expect(messageActionCalls.slice(before)).toEqual([{ accountId: "account-a", emailIds: ["email-a", "email-a2"], action: "markSpam" }]);
+    const log = context.db.db.prepare("SELECT details_json FROM audit_log WHERE action='message.markSpam' ORDER BY id DESC LIMIT 1").get() as { details_json: string };
+    expect(JSON.parse(log.details_json)).toMatchObject({ actorRole: "admin", mailbox: "a@example.test", requested: 2, succeeded: 2, failed: 0 });
+    expect(log.details_json).not.toContain("account-b");
+  });
+
+  it("rejects malformed or oversized junk action batches", async () => {
+    await request(context.app).post("/api/mailboxes/1/messages/actions")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ emailIds: [], action: "markSpam" }).expect(400);
+    await request(context.app).post("/api/mailboxes/1/messages/actions")
+      .set("Cookie", cookie).set("x-csrf-token", csrf)
+      .send({ emailIds: Array.from({ length: 51 }, (_, index) => `mail-${index}`), action: "trash" }).expect(400);
+    await request(context.app).post("/api/mailboxes/1/messages/actions")
+      .set("Cookie", cookie).set("x-csrf-token", csrf).send({ emailIds: ["email-a"], action: "destroy" }).expect(400);
+  });
+
   it("paginates multiple messages and returns an empty mailbox", async () => {
     const first = await request(context.app).get("/api/mailboxes/1/messages?position=0&limit=2").set("Cookie", cookie).expect(200);
     const second = await request(context.app).get("/api/mailboxes/1/messages?position=2&limit=2").set("Cookie", cookie).expect(200);
@@ -337,6 +384,19 @@ describe("API access control", () => {
     expect(externalLoginCalls.at(-1)).toEqual({ accountId: "account-a", enabled: true, password: "123456" });
     expect(permissionCalls.at(-1)).toEqual({ accountId: "account-a", externalLogin: true, emailSend: false, password: "123456" });
     expect(updateMailboxCalls.at(-1)).toEqual({ accountId: "account-a", patch: { credentials: { "0": { "@type": "Password", secret: "aaaaaa" } } } });
+  });
+
+  it("lets a mailbox user manage only the junk messages bound to their session", async () => {
+    const login = await request(context.app).post("/api/auth/login").send({ username: "a@example.test", password: "mailbox-password" }).expect(200);
+    const mailboxCookie = login.headers["set-cookie"][0].split(";")[0];
+    await request(context.app).post("/api/mailboxes/1/messages/actions")
+      .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
+      .send({ emailIds: ["email-a"], action: "markNotSpam", accountId: "account-b" }).expect(200);
+    expect(messageActionCalls.at(-1)).toEqual({ accountId: "account-a", emailIds: ["email-a"], action: "markNotSpam" });
+    await request(context.app).post("/api/mailboxes/2/messages/actions")
+      .set("Cookie", mailboxCookie).set("x-csrf-token", login.body.csrfToken)
+      .send({ emailIds: ["email-b"], action: "trash" }).expect(404);
+    await request(context.app).get("/api/mailboxes/2/folders").set("Cookie", mailboxCookie).expect(404);
   });
 
   it("keeps sending independent, derives the sender from the mailbox session and queues through Stalwart", async () => {

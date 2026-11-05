@@ -1,6 +1,24 @@
 import type { Config } from "./config.js";
 
 type MethodResponse = [string, any, string];
+export type MailFolderRole = "inbox" | "sent" | "drafts" | "junk" | "trash";
+export type MessageAction = "markSpam" | "markNotSpam" | "trash";
+
+type FolderRecord = {
+  id: string;
+  role?: string;
+  name?: string;
+  totalEmails?: number;
+  unreadEmails?: number;
+};
+
+type MessageActionResult = {
+  total: number;
+  succeeded: number;
+  failed: number;
+  succeededIds: string[];
+  failures: Array<{ id: string; reason: string }>;
+};
 
 const mailboxPermissions = {
   emailReceive: true,
@@ -154,7 +172,26 @@ export class StalwartClient {
     };
   }
 
-  async listMessages(accountId: string, options: { folder?: "inbox" | "sent" | "drafts"; query?: string; field?: string; read?: "all" | "unread" | "read"; position?: number; limit?: number; ascending?: boolean }) {
+  async listFolders(accountId: string) {
+    const [, data] = (await this.call([["Mailbox/get", {
+      accountId,
+      properties: ["id", "name", "role", "totalEmails", "unreadEmails"],
+    }, "mailbox-folders"]]))[0];
+    const roles: MailFolderRole[] = ["inbox", "sent", "drafts", "junk", "trash"];
+    const folders = new Map<string, FolderRecord>((data.list ?? []).filter((item: FolderRecord) => item.role).map((item: FolderRecord) => [item.role!, item]));
+    return roles.map((role) => {
+      const folder = folders.get(role);
+      return {
+        role,
+        id: folder?.id ?? null,
+        name: folder?.name ?? null,
+        totalEmails: Number.isSafeInteger(folder?.totalEmails) && Number(folder?.totalEmails) >= 0 ? Number(folder?.totalEmails) : 0,
+        unreadEmails: Number.isSafeInteger(folder?.unreadEmails) && Number(folder?.unreadEmails) >= 0 ? Number(folder?.unreadEmails) : 0,
+      };
+    });
+  }
+
+  async listMessages(accountId: string, options: { folder?: Exclude<MailFolderRole, "trash">; query?: string; field?: string; read?: "all" | "unread" | "read"; position?: number; limit?: number; ascending?: boolean }) {
     const role = options.folder ?? "inbox";
     const mailboxResponses = await this.call([
       ["Mailbox/query", { accountId, filter: { role }, limit: 1 }, "inbox-query"],
@@ -173,6 +210,77 @@ export class StalwartClient {
     const query = responses.find(([name]) => name === "Email/query")?.[1] ?? {};
     const get = responses.find(([name]) => name === "Email/get")?.[1] ?? {};
     return { total: query.total ?? 0, position: query.position ?? 0, list: get.list ?? [] };
+  }
+
+  async manageMessages(accountId: string, emailIds: string[], action: MessageAction): Promise<MessageActionResult> {
+    const requestedIds = [...new Set(emailIds)];
+    const folderRows = await this.listFolders(accountId);
+    const folders = new Map(folderRows.map((folder) => [folder.role, folder.id]));
+    const inboxId = folders.get("inbox");
+    const junkId = folders.get("junk");
+    const trashId = folders.get("trash");
+    if (!inboxId || !junkId || !trashId) throw new StalwartError("标准邮件文件夹不完整");
+
+    const [, getData] = (await this.call([["Email/get", {
+      accountId,
+      ids: requestedIds,
+      properties: ["id", "mailboxIds", "keywords"],
+    }, "email-action-get"]]))[0];
+    const messages = new Map<string, { id: string; mailboxIds?: Record<string, boolean>; keywords?: Record<string, boolean> }>(
+      (getData.list ?? []).map((message: any) => [message.id, message]),
+    );
+    const failures: MessageActionResult["failures"] = [];
+    const succeededIds: string[] = [];
+    const update: Record<string, Record<string, unknown>> = {};
+
+    for (const id of requestedIds) {
+      const message = messages.get(id);
+      if (!message) {
+        failures.push({ id, reason: "邮件不存在于当前邮箱" });
+        continue;
+      }
+      const memberships = { ...(message.mailboxIds ?? {}) };
+      if (action === "markSpam") {
+        if (!memberships[inboxId] && !memberships[junkId]) {
+          failures.push({ id, reason: "邮件不在收件箱或垃圾邮件中" });
+          continue;
+        }
+        delete memberships[inboxId];
+        memberships[junkId] = true;
+        update[id] = { mailboxIds: memberships, "keywords/$junk": true, "keywords/$notjunk": null };
+      } else if (action === "markNotSpam") {
+        if (!memberships[junkId] && !memberships[inboxId]) {
+          failures.push({ id, reason: "邮件不在垃圾邮件或收件箱中" });
+          continue;
+        }
+        delete memberships[junkId];
+        memberships[inboxId] = true;
+        update[id] = { mailboxIds: memberships, "keywords/$junk": null, "keywords/$notjunk": true };
+      } else {
+        if (!memberships[junkId] && !memberships[trashId]) {
+          failures.push({ id, reason: "邮件不在垃圾邮件中" });
+          continue;
+        }
+        update[id] = { mailboxIds: { [trashId]: true } };
+      }
+    }
+
+    if (Object.keys(update).length) {
+      const [, setData] = (await this.call([["Email/set", { accountId, update }, "email-action-set"]]))[0];
+      for (const id of Object.keys(update)) {
+        const failure = setData.notUpdated?.[id];
+        if (failure) failures.push({ id, reason: failure.description ?? failure.type ?? "操作失败" });
+        else succeededIds.push(id);
+      }
+    }
+
+    return {
+      total: requestedIds.length,
+      succeeded: succeededIds.length,
+      failed: failures.length,
+      succeededIds,
+      failures,
+    };
   }
 
   async getMessage(accountId: string, emailId: string) {

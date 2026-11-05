@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Forward, ImageIcon, Inbox, Languages, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Reply, ReplyAll, Search, Settings2, Trash2 } from "lucide-react";
-import { api, type Domain, type Mailbox, type MessageDetail, type MessageSummary } from "../api";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Forward, ImageIcon, Inbox, Languages, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Reply, ReplyAll, Search, Settings2, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { api, type Domain, type Mailbox, type MailFolder, type MessageAction, type MessageActionResult, type MessageDetail, type MessageSummary } from "../api";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
 import { ComposeDialog } from "../components/ComposeDialog";
 import { Modal } from "../components/Modal";
@@ -10,7 +10,7 @@ const PAGE_SIZE = 50;
 type MessagePage = { list: MessageSummary[]; total: number; position: number };
 type MobileStage = "mailboxes" | "messages" | "detail";
 type ReadFilter = "all" | "unread" | "read";
-type Folder = "inbox" | "sent" | "drafts";
+type Folder = "inbox" | "sent" | "drafts" | "junk";
 type ComposeMode = "compose" | "reply" | "replyAll" | "forward";
 
 function messagesPath(mailboxId: number, position: number, query: string, field: string, read: ReadFilter, order: string, folder: Folder) {
@@ -24,15 +24,17 @@ type MailWorkspaceProps = {
   isAdmin?: boolean;
   initialMailboxId?: number;
   initialMessageId?: string;
+  initialFolder?: "inbox" | "junk";
   onMailboxRoute?: (mailboxId: number) => void;
-  onMessageRoute?: (mailboxId: number, emailId: string) => void;
-  onMessageListRoute?: (mailboxId: number, replace?: boolean) => void;
+  onFolderRoute?: (mailboxId: number, folder: Folder) => void;
+  onMessageRoute?: (mailboxId: number, emailId: string, folder: Folder) => void;
+  onMessageListRoute?: (mailboxId: number, folder: Folder, replace?: boolean) => void;
   onInboxRoute?: () => void;
   onManage: () => void;
   onSettings?: () => void;
 };
 
-export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMessageId, onMailboxRoute, onMessageRoute, onMessageListRoute, onInboxRoute, onManage, onSettings }: MailWorkspaceProps) {
+export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMessageId, initialFolder = "inbox", onMailboxRoute, onFolderRoute, onMessageRoute, onMessageListRoute, onInboxRoute, onManage, onSettings }: MailWorkspaceProps) {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [mailboxSearch, setMailboxSearch] = useState("");
@@ -42,7 +44,10 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
   const [messageSearch, setMessageSearch] = useState("");
   const [searchField, setSearchField] = useState("text");
   const [readFilter, setReadFilter] = useState<ReadFilter>("all");
-  const [folder, setFolder] = useState<Folder>("inbox");
+  const [folder, setFolder] = useState<Folder>(initialFolder);
+  const [folderStats, setFolderStats] = useState<MailFolder[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [actionBusy, setActionBusy] = useState(false);
   const [order] = useState("desc");
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(0);
@@ -59,6 +64,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const requestId = useRef(0);
+  const folderRequestId = useRef(0);
   const detailRequestId = useRef(0);
   const routeReady = useRef(false);
   const appliedRoute = useRef("");
@@ -68,6 +74,9 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
 
   const selectedMailbox = mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
   const canSendFromSelectedMailbox = selectedMailbox?.email_send === 1;
+  const junkStats = folderStats.find((item) => item.role === "junk");
+  const supportsBulkActions = folder === "inbox" || folder === "junk";
+  const allPageSelected = messages.length > 0 && messages.every((message) => selectedIds.has(message.id));
   const displayHtml = translationMode === "translated" && translatedMessage ? translatedMessage.html : selectedMessage?.html ?? "";
   const displayPlain = translationMode === "translated" && translatedMessage ? translatedMessage.plain : selectedMessage?.plain ?? "";
 
@@ -82,6 +91,13 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
     window.setTimeout(() => setToast(""), 1600);
   };
 
+  const loadFolderStats = async (mailboxId: number) => {
+    const currentRequest = ++folderRequestId.current;
+    const stats = await api<MailFolder[]>(`/api/mailboxes/${mailboxId}/folders`);
+    if (currentRequest === folderRequestId.current) setFolderStats(stats);
+    return stats;
+  };
+
   const loadMessages = async (mailboxId: number, nextPosition = 0, query = messageSearch, field = searchField, read = readFilter, nextOrder = order, nextFolder = folder) => {
     const currentRequest = ++requestId.current;
     setError("");
@@ -91,6 +107,8 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       setMessages(page.list);
       setTotal(page.total);
       setPosition(page.position);
+      setFolder(nextFolder);
+      setSelectedIds(new Set());
       setSelectedMessage(null);
       setTranslatedMessage(null);
       setTranslationMode("original");
@@ -121,6 +139,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
           setMessages((current) => current.filter((item) => item.id !== emailId));
           setTotal((current) => Math.max(0, current - 1));
         }
+        void loadFolderStats(mailboxId);
       }
     } catch (caught) {
       if (currentRequest !== detailRequestId.current) return;
@@ -138,12 +157,14 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
     const next = rows.find((row) => row.id === preferredId) ?? rows[0] ?? null;
     if (next && next.id !== selectedMailboxId) {
       setSelectedMailboxId(next.id);
-      await loadMessages(next.id, 0, "", "text", "all", "desc");
+      await Promise.all([loadMessages(next.id, 0, "", "text", "all", "desc", "inbox"), loadFolderStats(next.id)]);
     } else if (!next) {
+      folderRequestId.current += 1;
       setSelectedMailboxId(null);
       setMessages([]);
       setTotal(0);
       setSelectedMessage(null);
+      setFolderStats([]);
     }
     return rows;
   };
@@ -165,27 +186,27 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         setSelectedMessage(null);
         setMobileStage(initialMessageId ? "detail" : "messages");
         setError("邮箱不存在或已被删除");
-        appliedRoute.current = `${initialMailboxId}\0${initialMessageId ?? ""}`;
+        appliedRoute.current = `${initialMailboxId}\0${initialFolder}\0${initialMessageId ?? ""}`;
         routeReady.current = true;
         return;
       }
       const next = requested ?? rows[0];
       if (next) {
         setSelectedMailboxId(next.id);
-        await loadMessages(next.id, 0, "", "text", "all", "desc");
+        await Promise.all([loadMessages(next.id, 0, "", "text", "all", "desc", initialFolder), loadFolderStats(next.id)]);
         if (initialMessageId) await loadMessageDetail(next.id, initialMessageId);
       }
-      appliedRoute.current = `${initialMailboxId ?? ""}\0${initialMessageId ?? ""}`;
+      appliedRoute.current = `${initialMailboxId ?? ""}\0${initialFolder}\0${initialMessageId ?? ""}`;
       routeReady.current = true;
     }).catch((caught) => active && setError((caught as Error).message));
-    return () => { active = false; requestId.current += 1; };
+    return () => { active = false; requestId.current += 1; folderRequestId.current += 1; detailRequestId.current += 1; };
     // Initial data is intentionally loaded once; later selection is user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!routeReady.current) return;
-    const routeKey = `${initialMailboxId ?? ""}\0${initialMessageId ?? ""}`;
+    const routeKey = `${initialMailboxId ?? ""}\0${initialFolder}\0${initialMessageId ?? ""}`;
     if (appliedRoute.current === routeKey) return;
     appliedRoute.current = routeKey;
     queueMicrotask(() => {
@@ -195,6 +216,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         setSelectedMessage(null);
         setTranslatedMessage(null);
         setTranslationMode("original");
+        setFolder(initialFolder);
         setMobileStage("mailboxes");
         return;
       }
@@ -214,7 +236,12 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
           setMessageSearch("");
           setSearchField("text");
           setReadFilter("all");
-          await loadMessages(mailbox.id, 0, "", "text", "all", "desc");
+          await Promise.all([loadMessages(mailbox.id, 0, "", "text", "all", "desc", initialFolder), loadFolderStats(mailbox.id)]);
+        } else if (folder !== initialFolder) {
+          setMessageSearch("");
+          setSearchField("text");
+          setReadFilter("all");
+          await loadMessages(mailbox.id, 0, "", "text", "all", "desc", initialFolder);
         }
         if (appliedRoute.current !== routeKey) return;
         if (initialMessageId) await loadMessageDetail(mailbox.id, initialMessageId);
@@ -230,35 +257,51 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
     });
     // Route changes are applied explicitly; loader functions intentionally retain current list state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMailboxId, initialMessageId, mailboxes.length]);
+  }, [initialMailboxId, initialMessageId, initialFolder, mailboxes.length]);
 
   const selectMailbox = async (mailbox: Mailbox) => {
-    appliedRoute.current = `${mailbox.id}\0`;
+    appliedRoute.current = `${mailbox.id}\0inbox\0`;
     onMailboxRoute?.(mailbox.id);
     setSelectedMailboxId(mailbox.id);
     setMessageSearch("");
     setSearchField("text");
     setReadFilter("all");
+    setFolder("inbox");
+    setFolderStats([]);
     setComposeMode(null);
     setSelectedMessage(null);
     setTranslatedMessage(null);
     setTranslationMode("original");
     setMobileStage("messages");
-    await loadMessages(mailbox.id, 0, "", "text", "all", "desc");
+    await Promise.all([loadMessages(mailbox.id, 0, "", "text", "all", "desc", "inbox"), loadFolderStats(mailbox.id)]);
   };
 
   const openMessage = async (message: MessageSummary) => {
     if (!selectedMailboxId) return;
-    appliedRoute.current = `${selectedMailboxId}\0${message.id}`;
-    onMessageRoute?.(selectedMailboxId, message.id);
+    appliedRoute.current = `${selectedMailboxId}\0${folder}\0${message.id}`;
+    onMessageRoute?.(selectedMailboxId, message.id, folder);
     await loadMessageDetail(selectedMailboxId, message.id);
+  };
+
+  const selectFolder = async (nextFolder: Folder) => {
+    if (!selectedMailboxId) return;
+    const routeFolder = nextFolder === "junk" ? "junk" : "inbox";
+    appliedRoute.current = `${selectedMailboxId}\0${routeFolder}\0`;
+    onFolderRoute?.(selectedMailboxId, nextFolder);
+    setMessageSearch("");
+    setSearchField("text");
+    setReadFilter("all");
+    setSelectedMessage(null);
+    setTranslatedMessage(null);
+    setTranslationMode("original");
+    await loadMessages(selectedMailboxId, 0, "", "text", "all", "desc", nextFolder);
   };
 
   const refreshSelectedMailbox = async () => {
     if (!selectedMailboxId) return;
     const currentId = selectedMailboxId;
     const rows = await loadMailboxes(mailboxSearch, currentId);
-    if (rows.some((row) => row.id === currentId)) await loadMessages(currentId, position);
+    if (rows.some((row) => row.id === currentId)) await Promise.all([loadMessages(currentId, position), loadFolderStats(currentId)]);
   };
 
   useEffect(() => {
@@ -336,26 +379,58 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       setMessages((current) => current.filter((item) => item.id !== selectedMessage.id));
       setTotal((current) => Math.max(0, current - 1));
     }
+    void loadFolderStats(selectedMailboxId);
   };
 
   const returnToMessages = () => {
     if (selectedMailboxId) {
-      appliedRoute.current = `${selectedMailboxId}\0`;
-      onMessageListRoute?.(selectedMailboxId, true);
+      appliedRoute.current = `${selectedMailboxId}\0${folder}\0`;
+      onMessageListRoute?.(selectedMailboxId, folder, true);
     }
     setMobileStage("messages");
     restoreMessageScroll();
   };
 
+  const runMessageAction = async (action: MessageAction, ids: string[]) => {
+    if (!selectedMailboxId || !ids.length || actionBusy) return;
+    if (action === "trash" && !window.confirm(`确认将选中的 ${ids.length} 封垃圾邮件移到废纸篓？`)) return;
+    setActionBusy(true);
+    setError("");
+    try {
+      const result = await api<MessageActionResult>(`/api/mailboxes/${selectedMailboxId}/messages/actions`, {
+        method: "POST",
+        body: JSON.stringify({ emailIds: ids, action }),
+      });
+      setSelectedIds(new Set());
+      setSelectedMessage(null);
+      setTranslatedMessage(null);
+      setTranslationMode("original");
+      setMobileStage("messages");
+      appliedRoute.current = `${selectedMailboxId}\0${folder}\0`;
+      onMessageListRoute?.(selectedMailboxId, folder, true);
+      const nextPosition = position > 0 && result.succeeded >= messages.length ? Math.max(0, position - PAGE_SIZE) : position;
+      await Promise.all([loadMessages(selectedMailboxId, nextPosition), loadFolderStats(selectedMailboxId)]);
+      const label = action === "markSpam" ? "已标记为垃圾邮件" : action === "markNotSpam" ? "已恢复到收件箱" : "已移到废纸篓";
+      showToast(result.failed ? `${label} ${result.succeeded} 封，失败 ${result.failed} 封` : `${label} ${result.succeeded} 封`);
+      if (result.failed) setError(result.failures.map((failure) => failure.reason).join("；"));
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const deleteMessage = async () => {
-    if (!selectedMailboxId || !selectedMessage || !window.confirm("确认永久删除这封邮件？")) return;
+    if (!selectedMailboxId || !selectedMessage) return;
+    if (folder === "junk") return void runMessageAction("trash", [selectedMessage.id]);
+    if (!window.confirm("确认永久删除这封邮件？")) return;
     await api(`/api/mailboxes/${selectedMailboxId}/messages/${encodeURIComponent(selectedMessage.id)}`, { method: "DELETE" });
     setSelectedMessage(null);
     setTranslatedMessage(null);
     setTranslationMode("original");
     setMobileStage("messages");
-    appliedRoute.current = `${selectedMailboxId}\0`;
-    onMessageListRoute?.(selectedMailboxId, true);
+    appliedRoute.current = `${selectedMailboxId}\0${folder}\0`;
+    onMessageListRoute?.(selectedMailboxId, folder, true);
     await loadMessages(selectedMailboxId, position);
   };
 
@@ -393,7 +468,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
           {canSendFromSelectedMailbox && <button title="写邮件" aria-label="写邮件" onClick={() => setComposeMode("compose")} className="focus-ring grid h-8 w-8 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={15} /></button>}
           {selectedMailboxId && <button title="刷新邮件" aria-label="刷新邮件" onClick={() => void refreshSelectedMailbox()} className="focus-ring grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><RefreshCw size={15} /></button>}
         </div>
-        <div className="mt-3 grid grid-cols-3 rounded-md bg-slate-100 p-0.5 text-xs">{([['inbox','收件箱'],['sent','已发送'],['drafts','草稿']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => { setFolder(value); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, "", "text", "all", "desc", value); }} className={`h-8 rounded ${folder === value ? "bg-white font-medium text-blue-700 shadow-sm" : "text-slate-600"}`}>{label}</button>)}</div>
+        <div className="mt-3 grid grid-cols-2 rounded-md bg-slate-100 p-0.5 text-xs xl:grid-cols-4">{([['inbox','收件箱'],['sent','已发送'],['drafts','草稿'],['junk','垃圾邮件']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => void selectFolder(value)} className={`flex h-9 min-w-0 items-center justify-center gap-1 rounded px-1 ${folder === value ? "bg-white font-medium text-blue-700 shadow-sm" : "text-slate-600"}`}>{value === "junk" && <ShieldAlert size={13} className="shrink-0" />}<span>{label}</span>{value === "junk" && Boolean(junkStats?.unreadEmails) && <span aria-label={`${junkStats?.unreadEmails} 封未读垃圾邮件`} className="min-w-4 shrink-0 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 text-white">{junkStats?.unreadEmails}</span>}</button>)}</div>
         <form className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2" onSubmit={(event) => { event.preventDefault(); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0); }}>
           <div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} /><input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)} placeholder="搜索当前邮箱" aria-label="搜索当前邮箱" className="form-control h-9 w-full min-w-0 pl-9 pr-3 text-sm" /></div>
           <button aria-label="执行邮件搜索" className="btn-secondary focus-ring grid h-9 w-9 place-items-center p-0"><Search size={15} /></button>
@@ -402,17 +477,26 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
             <label className="relative min-w-0"><ListFilter className="pointer-events-none absolute left-2.5 top-2 text-slate-400" size={14} /><span className="sr-only">阅读状态</span><select aria-label="阅读状态" value={readFilter} onChange={(event) => { const next = event.target.value as ReadFilter; setReadFilter(next); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, messageSearch, searchField, next); }} className="form-control h-8 min-w-0 pl-8 pr-2 text-xs"><option value="all">全部</option><option value="unread">未读</option><option value="read">已读</option></select></label>
           </div>
         </form>
+        {supportsBulkActions && <div className="mt-3 flex min-h-9 flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs">
+          <label className="flex min-h-8 items-center gap-2 text-slate-600"><input type="checkbox" aria-label="全选当前页" checked={allPageSelected} disabled={!messages.length || actionBusy} onChange={(event) => setSelectedIds(event.target.checked ? new Set(messages.map((message) => message.id)) : new Set())} className="h-4 w-4 rounded border-slate-300" />全选当前页</label>
+          <span className="text-slate-400">已选 {selectedIds.size}</span>
+          {folder === "inbox" && <button type="button" disabled={!selectedIds.size || actionBusy} onClick={() => void runMessageAction("markSpam", [...selectedIds])} className="btn-secondary focus-ring ml-auto min-h-8 gap-1.5 px-2.5 text-xs"><ShieldAlert size={14} />标记垃圾邮件</button>}
+          {folder === "junk" && <><button type="button" disabled={!selectedIds.size || actionBusy} onClick={() => void runMessageAction("markNotSpam", [...selectedIds])} className="btn-secondary focus-ring ml-auto min-h-8 gap-1.5 px-2.5 text-xs"><ShieldCheck size={14} />不是垃圾邮件</button><button type="button" disabled={!selectedIds.size || actionBusy} onClick={() => void runMessageAction("trash", [...selectedIds])} className="btn-secondary focus-ring min-h-8 gap-1.5 px-2.5 text-xs text-red-700"><Trash2 size={14} />移到废纸篓</button></>}
+        </div>}
       </div>
       {error && <div role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
       <div ref={messageListRef} onScroll={(event) => { messageScrollTop.current = event.currentTarget.scrollTop; }} className="min-h-0 flex-1 overflow-y-auto">
         {messages.map((message) => {
           const unread = !message.keywords?.["$seen"];
-          return <button key={message.id} onClick={() => void openMessage(message)} className={`focus-ring relative block min-h-20 w-full border-b border-slate-100 px-4 py-2.5 text-left md:min-h-24 md:py-3 ${selectedMessage?.id === message.id ? "bg-blue-50" : "hover:bg-slate-50"}`}>
+          return <div key={message.id} className={`relative flex min-h-20 w-full border-b border-slate-100 md:min-h-24 ${selectedMessage?.id === message.id ? "bg-blue-50" : "hover:bg-slate-50"}`}>
             {unread && <span className="absolute left-1.5 top-4 h-2 w-2 rounded-full bg-blue-600 md:top-5" />}
-            <div className="flex min-w-0 items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] md:text-sm ${unread ? "font-semibold text-slate-950" : "font-medium text-slate-700"}`}>{message.from?.[0]?.name || message.from?.[0]?.email || "未知发件人"}</span><time className="min-w-11 shrink-0 text-right text-[11px] text-slate-400 md:text-xs">{formatDate(message.receivedAt)}</time></div>
-            <div className={`mt-0.5 line-clamp-2 text-[13px] leading-5 md:mt-1 md:text-sm ${unread ? "font-semibold text-slate-900" : "text-slate-600"}`}>{message.subject || "（无主题）"}</div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 md:mt-1.5"><p className="min-w-0 flex-1 truncate text-xs leading-4 text-slate-400 md:leading-5">{message.preview}</p>{message.hasAttachment && <Paperclip className="shrink-0 text-slate-400" size={14} />}</div>
-          </button>;
+            {supportsBulkActions && <label className="grid w-10 shrink-0 place-items-center"><input type="checkbox" aria-label={`选择 ${message.subject || "无主题邮件"}`} checked={selectedIds.has(message.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(message.id); else next.delete(message.id); return next; })} className="h-4 w-4 rounded border-slate-300" /></label>}
+            <button onClick={() => void openMessage(message)} className="focus-ring min-w-0 flex-1 px-3 py-2.5 text-left md:py-3">
+              <div className="flex min-w-0 items-center gap-2"><span className={`min-w-0 flex-1 truncate text-[13px] md:text-sm ${unread ? "font-semibold text-slate-950" : "font-medium text-slate-700"}`}>{message.from?.[0]?.name || message.from?.[0]?.email || "未知发件人"}</span><time className="min-w-11 shrink-0 text-right text-[11px] text-slate-400 md:text-xs">{formatDate(message.receivedAt)}</time></div>
+              <div className={`mt-0.5 line-clamp-2 text-[13px] leading-5 md:mt-1 md:text-sm ${unread ? "font-semibold text-slate-900" : "text-slate-600"}`}>{message.subject || "（无主题）"}</div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 md:mt-1.5"><p className="min-w-0 flex-1 truncate text-xs leading-4 text-slate-400 md:leading-5">{message.preview}</p>{message.hasAttachment && <Paperclip className="shrink-0 text-slate-400" size={14} />}</div>
+            </button>
+          </div>;
         })}
         {!messages.length && <div className="grid h-72 place-items-center text-sm text-slate-500"><div className="text-center"><MailOpen className="mx-auto mb-2 text-slate-300" size={30} />暂无邮件</div></div>}
       </div>
@@ -421,10 +505,10 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
 
     <article aria-label="邮件详情" className={`${mobileStage === "detail" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col bg-white md:flex`}>
       {detailLoading && <div className="grid h-full place-items-center text-sm text-slate-500">正在读取邮件...</div>}
-      {!detailLoading && !selectedMessage && <div className="grid h-full place-items-center px-6 text-center text-sm text-slate-400"><div>{error ? <><MailOpen className="mx-auto mb-3 text-slate-300" size={34} /><p className="text-slate-600">{error}</p><button type="button" onClick={() => { if (selectedMailboxId) onMessageListRoute?.(selectedMailboxId, true); else onInboxRoute?.(); }} className="btn-secondary focus-ring mt-4 h-9 px-3 text-sm">返回收件箱</button></> : <><MailOpen className="mx-auto mb-3 text-slate-300" size={34} />选择一封邮件查看正文</>}</div></div>}
+      {!detailLoading && !selectedMessage && <div className="grid h-full place-items-center px-6 text-center text-sm text-slate-400"><div>{error ? <><MailOpen className="mx-auto mb-3 text-slate-300" size={34} /><p className="text-slate-600">{error}</p><button type="button" onClick={() => { if (selectedMailboxId) onMessageListRoute?.(selectedMailboxId, folder, true); else onInboxRoute?.(); }} className="btn-secondary focus-ring mt-4 h-9 px-3 text-sm">返回邮件列表</button></> : <><MailOpen className="mx-auto mb-3 text-slate-300" size={34} />选择一封邮件查看正文</>}</div></div>}
       {!detailLoading && selectedMessage && <>
         <header className="shrink-0 border-b border-slate-200 px-4 py-4 lg:px-6">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <button onClick={returnToMessages} aria-label="返回邮件列表" className="focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"><ArrowLeft size={18} /></button>
             <div className="min-w-0 flex-1">
               <h2 className="break-words text-base font-semibold leading-6 text-slate-950">{selectedMessage.subject || "（无主题）"}</h2>
@@ -432,10 +516,12 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
               <div className="mail-address-full mt-1 text-xs leading-5 text-slate-400">收件人：{selectedMessage.to?.map((recipient) => recipient.email).join(", ") || "-"}</div>
               <time className="mt-1 block text-xs text-slate-400">{new Date(selectedMessage.receivedAt).toLocaleString("zh-CN")}</time>
             </div>
-            <div className="flex shrink-0 gap-1">
+            <div className="flex w-full shrink-0 justify-end gap-1 xl:w-auto">
               {canSendFromSelectedMailbox && <><button title="回复" aria-label="回复" onClick={() => setComposeMode("reply")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Reply size={17} /></button><button title="回复全部" aria-label="回复全部" onClick={() => setComposeMode("replyAll")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><ReplyAll size={17} /></button><button title="转发" aria-label="转发" onClick={() => setComposeMode("forward")} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Forward size={17} /></button></>}
+              {folder === "inbox" && <button title="标记为垃圾邮件" aria-label="标记为垃圾邮件" disabled={actionBusy} onClick={() => void runMessageAction("markSpam", [selectedMessage.id])} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-red-700 disabled:opacity-40"><ShieldAlert size={17} /></button>}
+              {folder === "junk" && <button title="不是垃圾邮件" aria-label="不是垃圾邮件" disabled={actionBusy} onClick={() => void runMessageAction("markNotSpam", [selectedMessage.id])} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:opacity-40"><ShieldCheck size={17} /></button>}
               <button title={selectedMessage.keywords?.["$seen"] ? "标记未读" : "标记已读"} aria-label={selectedMessage.keywords?.["$seen"] ? "标记未读" : "标记已读"} onClick={() => void markRead(!selectedMessage.keywords?.["$seen"])} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-blue-700">{selectedMessage.keywords?.["$seen"] ? <Mail size={17} /> : <MailOpen size={17} />}</button>
-              <button title="删除邮件" aria-label="删除邮件" onClick={() => void deleteMessage()} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-red-600 hover:bg-red-50"><Trash2 size={17} /></button>
+              <button title={folder === "junk" ? "移到废纸篓" : "删除邮件"} aria-label={folder === "junk" ? "移到废纸篓" : "删除邮件"} onClick={() => void deleteMessage()} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-red-600 hover:bg-red-50"><Trash2 size={17} /></button>
             </div>
           </div>
           {selectedMessage.verificationCode && <div className="mt-4 flex min-h-14 flex-wrap items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
@@ -469,11 +555,11 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       setMailboxSearch("");
       setMobileStage("messages");
       await loadMailboxes("", created.id);
-      appliedRoute.current = `${created.id}\0`;
+      appliedRoute.current = `${created.id}\0inbox\0`;
       onMailboxRoute?.(created.id);
       showToast("邮箱已创建");
     }} />}
-    {composeMode && selectedMailbox && <ComposeDialog mailbox={selectedMailbox} mode={composeMode} message={composeMode === "compose" ? null : selectedMessage} onClose={() => setComposeMode(null)} onDone={(kind) => { setComposeMode(null); showToast(kind === "draft" ? "草稿已保存" : "邮件已提交到投递队列"); if (selectedMailboxId) void loadMessages(selectedMailboxId, 0, "", "text", "all", "desc", kind === "draft" ? "drafts" : "sent"); setFolder(kind === "draft" ? "drafts" : "sent"); }} />}
+    {composeMode && selectedMailbox && <ComposeDialog mailbox={selectedMailbox} mode={composeMode} message={composeMode === "compose" ? null : selectedMessage} onClose={() => setComposeMode(null)} onDone={(kind) => { setComposeMode(null); showToast(kind === "draft" ? "草稿已保存" : "邮件已提交到投递队列"); void selectFolder(kind === "draft" ? "drafts" : "sent"); }} />}
     {clientInfoOpen && selectedMailbox && <ClientInfo mailbox={selectedMailbox} onClose={() => setClientInfoOpen(false)} />}
     {toast && <div role="status" className="mobile-toast fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm text-white shadow-lg"><Check size={15} />{toast}</div>}
   </div>;

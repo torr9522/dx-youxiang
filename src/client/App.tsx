@@ -7,7 +7,7 @@ import { MailWorkspacePage } from "./pages/MailWorkspacePage";
 import { MailboxesPage } from "./pages/MailboxesPage";
 import { SettingsCenterPage, type SettingsSection } from "./pages/SettingsCenterPage";
 
-const safeAppPath = /^\/(?:inbox(?:\/[1-9][0-9]*(?:\/[^/?#]+)?)?|mailboxes|settings(?:\/(?:domains|audit|translation))?)\/?$/;
+const safeAppPath = /^\/(?:inbox(?:\/[1-9][0-9]*(?:\/(?:junk(?:\/[^/?#]+)?|[^/?#]+))?)?|mailboxes|settings(?:\/(?:domains|audit|translation))?)\/?$/;
 
 function safeReturnPath(value: string | null) {
   if (!value) return "/inbox";
@@ -20,7 +20,7 @@ function safeReturnPath(value: string | null) {
   }
 }
 
-function InboxRoute({ isAdmin }: { isAdmin: boolean }) {
+function InboxRoute({ isAdmin, folder = "inbox" }: { isAdmin: boolean; folder?: "inbox" | "junk" }) {
   const { mailboxId: mailboxParam, messageId } = useParams();
   const navigate = useNavigate();
   const mailboxId = mailboxParam === undefined ? undefined : /^[1-9][0-9]*$/.test(mailboxParam) && Number.isSafeInteger(Number(mailboxParam)) ? Number(mailboxParam) : null;
@@ -29,9 +29,11 @@ function InboxRoute({ isAdmin }: { isAdmin: boolean }) {
     isAdmin={isAdmin}
     initialMailboxId={mailboxId}
     initialMessageId={messageId}
+    initialFolder={folder}
     onMailboxRoute={(id) => navigate(`/inbox/${id}`)}
-    onMessageRoute={(id, emailId) => navigate(`/inbox/${id}/${encodeURIComponent(emailId)}`)}
-    onMessageListRoute={(id, replace = false) => navigate(`/inbox/${id}`, { replace })}
+    onFolderRoute={(id, nextFolder) => navigate(nextFolder === "junk" ? `/inbox/${id}/junk` : `/inbox/${id}`)}
+    onMessageRoute={(id, emailId, currentFolder) => navigate(currentFolder === "junk" ? `/inbox/${id}/junk/${encodeURIComponent(emailId)}` : `/inbox/${id}/${encodeURIComponent(emailId)}`)}
+    onMessageListRoute={(id, currentFolder, replace = false) => navigate(currentFolder === "junk" ? `/inbox/${id}/junk` : `/inbox/${id}`, { replace })}
     onInboxRoute={() => navigate("/inbox")}
     onManage={() => navigate("/mailboxes")}
     onSettings={() => navigate("/settings/translation")}
@@ -129,6 +131,7 @@ export function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/inbox" replace />} />
       <Route path="/login" element={<Navigate to={safeReturnPath(new URLSearchParams(location.search).get("next"))} replace />} />
+      <Route path="/inbox/:mailboxId/junk/:messageId?" element={<InboxRoute isAdmin={isAdmin} folder="junk" />} />
       <Route path="/inbox/:mailboxId?/:messageId?" element={<InboxRoute isAdmin={isAdmin} />} />
       <Route path="/mailboxes" element={isAdmin ? <main className="page-main mx-auto max-w-[1420px] p-4 sm:p-6 lg:p-8"><MailboxesPage onMailbox={(id) => navigate(`/inbox/${id}`)} /></main> : <Navigate to="/inbox" replace />} />
       <Route path="/settings" element={isAdmin ? <SettingsRoute section="home" /> : <Navigate to="/inbox" replace />} />

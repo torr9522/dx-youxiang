@@ -22,7 +22,7 @@ const loginIdentifier = z.string().trim().min(1).max(254);
 const bulkMailboxLimit = 100;
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
-const spaRoute = /^\/(?:login|inbox(?:\/[1-9][0-9]*(?:\/[^/]+)?)?|mailboxes|settings(?:\/(?:domains|audit|translation))?|domains|audit)?\/?$/;
+const spaRoute = /^\/(?:login|inbox(?:\/[1-9][0-9]*(?:\/(?:junk(?:\/[^/]+)?|[^/]+))?)?|mailboxes|settings(?:\/(?:domains|audit|translation))?|domains|audit)?\/?$/;
 
 type CertificateStatusSource = Pick<X509Certificate, "validTo" | "issuer" | "subject" | "checkHost">;
 
@@ -373,6 +373,11 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     });
   });
 
+  app.get("/api/mailboxes/:id/folders", async (req, res) => {
+    const row = mailbox(req.params.id, res);
+    res.json(await stalwart.listFolders(row.stalwart_account_id));
+  });
+
   app.post("/api/mailboxes/:id/password", auth.requireAdmin, async (req, res) => {
     const row = mailbox(req.params.id, res);
     const { password } = parse(z.object({ password: mailboxPassword }), req.body);
@@ -432,9 +437,29 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
       position: queryInteger(0, 0, Number.MAX_SAFE_INTEGER),
       limit: queryInteger(50, 1, 100),
       order: z.enum(["asc", "desc"]).default("desc"),
-      folder: z.enum(["inbox", "sent", "drafts"]).default("inbox"),
+      folder: z.enum(["inbox", "sent", "drafts", "junk"]).default("inbox"),
     }), req.query);
     res.json(await stalwart.listMessages(row.stalwart_account_id, { folder: input.folder, query: input.q, field: input.field, read: input.read, position: input.position, limit: input.limit, ascending: input.order === "asc" }));
+  });
+
+  app.post("/api/mailboxes/:id/messages/actions", async (req, res) => {
+    const row = mailbox(req.params.id, res);
+    const input = parse(z.object({
+      emailIds: z.array(z.string().min(1).max(512)).min(1, "至少选择一封邮件").max(50, "每次最多操作 50 封邮件")
+        .transform((ids) => [...new Set(ids)]),
+      action: z.enum(["markSpam", "markNotSpam", "trash"]),
+    }), req.body);
+    const result = await stalwart.manageMessages(row.stalwart_account_id, input.emailIds, input.action);
+    const identity = res.locals.auth as AuthenticatedSession;
+    audit(db, req, `message.${input.action}`, "mailbox", String(row.id), {
+      actor: identity.role === "admin" ? config.ADMIN_USERNAME : identity.address,
+      actorRole: identity.role,
+      mailbox: row.address,
+      requested: result.total,
+      succeeded: result.succeeded,
+      failed: result.failed,
+    });
+    res.status(result.failed ? 207 : 200).json(result);
   });
 
   const sendLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 40, standardHeaders: "draft-8", legacyHeaders: false });

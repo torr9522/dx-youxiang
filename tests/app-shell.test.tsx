@@ -18,6 +18,7 @@ describe("mobile application navigation", () => {
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([]);
       if (url === "/api/domains") return json([]);
+      if (url === "/api/mailboxes/7/folders") return json([]);
       if (url === "/api/audit") return json([]);
       throw new Error(`Unexpected request: ${url}`);
     }));
@@ -87,6 +88,7 @@ describe("mobile application navigation", () => {
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([mailbox]);
       if (url === "/api/domains") return json([]);
+      if (url === "/api/mailboxes/7/folders") return json([]);
       if (url.startsWith("/api/mailboxes/7/messages?")) return json({ list: [message], total: 1, position: 0 });
       if (url === "/api/mailboxes/7/messages/m1") return json({ ...message, plain: "Route body", html: "<p>Route body</p>", blockedRemoteImages: false, attachments: [], translation: { language: "eng", label: "英文", translatable: true, configured: false, enabled: false, targetLanguage: "zh-CN" } });
       throw new Error(`Unexpected request: ${url}`);
@@ -117,6 +119,7 @@ describe("mobile application navigation", () => {
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([{ id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 1 }]);
       if (url === "/api/domains") return json([]);
+      if (url === "/api/mailboxes/7/folders") return json([]);
       if (url.startsWith("/api/mailboxes/7/messages?")) return json({ list: [], total: 1, position: 0 });
       if (url === "/api/mailboxes/7/messages/m1") return json({ id: "m1", subject: "Direct route", receivedAt: "2026-01-02T03:04:05Z", from: [], to: [], keywords: { "$seen": true }, hasAttachment: false, preview: "Direct body", plain: "Direct body", html: "<p>Direct body</p>", blockedRemoteImages: false, attachments: [], translation: { language: "eng", label: "英文", translatable: true, configured: false, enabled: false, targetLanguage: "zh-CN" } });
       throw new Error(`Unexpected request: ${url}`);
@@ -124,6 +127,32 @@ describe("mobile application navigation", () => {
     renderApp();
     expect(await screen.findByText("Direct body")).toBeTruthy();
     expect(window.location.pathname).toBe("/inbox/7/m1");
+  });
+
+  it("loads Junk directly and preserves its folder context in message URLs", async () => {
+    window.history.replaceState({}, "", "/inbox/7/junk");
+    const mailbox = { id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, email_send: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 0 };
+    const message = { id: "spam-1", receivedAt: "2026-01-02T03:04:05Z", from: [{ email: "sender@example.test" }], to: [{ email: mailbox.address }], subject: "Junk route message", keywords: { "$junk": true }, hasAttachment: false, preview: "Junk body" };
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
+      if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([mailbox]);
+      if (url === "/api/domains") return json([]);
+      if (url === "/api/mailboxes/7/folders") return json([{ role: "junk", id: "junk-id", name: "Junk Mail", totalEmails: 1, unreadEmails: 1 }]);
+      if (url.startsWith("/api/mailboxes/7/messages?") && url.includes("folder=junk")) return json({ list: [message], total: 1, position: 0 });
+      if (url === "/api/mailboxes/7/messages/spam-1") return json({ ...message, plain: "Junk body", html: "<p>Junk body</p>", blockedRemoteImages: false, attachments: [], translation: { language: "eng", label: "英文", translatable: true, configured: false, enabled: false, targetLanguage: "zh-CN" } });
+      if (url.endsWith("/read")) return Promise.resolve(new Response(null, { status: 204 }));
+      throw new Error(`Unexpected request: ${url}`);
+    }));
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(await screen.findByText(message.subject));
+    const detail = screen.getByLabelText("邮件详情");
+    expect(await within(detail).findByText("Junk body")).toBeTruthy();
+    expect(window.location.pathname).toBe("/inbox/7/junk/spam-1");
+    window.history.back();
+    await waitFor(() => expect(window.location.pathname).toBe("/inbox/7/junk"));
+    await waitFor(() => expect(within(detail).queryByText("Junk body")).toBeNull());
   });
 
   it("restores a safe deep link after login and rejects an external return URL", async () => {
