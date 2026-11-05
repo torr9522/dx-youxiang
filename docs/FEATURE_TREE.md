@@ -43,7 +43,7 @@ POP3, Exchange, public registration, multiple administrators, containers, client
 
 ## Future Backlog
 
-- In-place translation of the displayed email body (not implemented in Phase 1.5)
+- Mail-client autoconfiguration and additional provider-specific deliverability acceptance remain future work.
 
 ## Codex Project Skills
 

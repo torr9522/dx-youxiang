@@ -89,22 +89,35 @@ describe("native installer contracts", () => {
 
   it("defaults the public bootstrap installer to the stable release", async () => {
     const bootstrap = await readFile("install.sh", "utf8");
-    expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.4}");
+    expect(bootstrap).toContain("DX_YOUXIANG_VERSION=${DX_YOUXIANG_VERSION:-0.1.5}");
     expect(bootstrap).toContain("DX_YOUXIANG_ARCHIVE_PATH must be absolute");
     expect(bootstrap).toContain("DX_YOUXIANG_ARCHIVE_SHA256 is required");
     expect(bootstrap).toContain("DX_YOUXIANG_ARCHIVE_SHA256 must contain 64 hex characters");
   });
 
-  it("waits for bounded application readiness before accepting or rolling back an upgrade", async () => {
+  it("builds every documented stable release asset and checksums each uploaded file", async () => {
+    const builder = await readFile("scripts/build-release.sh", "utf8");
+
+    expect(builder).toContain('git -C "$root" archive --format=zip');
+    expect(builder).toContain('cp "$root/RELEASE_NOTES.md" "$output/RELEASE_NOTES.md"');
+    expect(builder).toContain('sha256sum "$archive" "$zip_archive" install.sh RELEASE_NOTES.md sbom.cdx.json > SHA256SUMS');
+  });
+
+  it("configures Phase 1.8 services with the existing credential and restores receive-only behavior on rollback", async () => {
     const upgrade = await readFile("scripts/upgrade.sh", "utf8");
 
     expect(upgrade).toContain("DX_YOUXIANG_ARCHIVE_PATH must be absolute");
     expect(upgrade).toContain("DX_YOUXIANG_ARCHIVE_SHA256 is required");
     expect(upgrade).toContain("DX_YOUXIANG_ARCHIVE_SHA256 must contain 64 hex characters");
-    expect(upgrade).toContain("wait_ready()");
+    expect(upgrade).toContain("configure_stalwart()");
+    expect(upgrade).toContain('SERVICE_PASSWORD="$service_password"');
+    expect(upgrade).toContain('configure_stalwart true "$tmp/stalwart-service.json"');
+    expect(upgrade).toContain('configure_stalwart false "$tmp/stalwart-service.rollback.json"');
+    expect(upgrade).toContain("wait_http()");
     expect(upgrade).toContain('test "$wait_attempt" -lt 45 || return 1');
     expect(upgrade).toContain("sleep 1");
-    expect(upgrade).toContain("if ! wait_ready; then");
-    expect(upgrade.match(/if ! wait_ready; then/g)).toHaveLength(2);
+    expect(upgrade).toContain("rollback_upgrade()");
+    expect(upgrade).toContain('systemctl restart dx-youxiang-firewall.service');
+    expect(upgrade).toContain('wait_http "http://127.0.0.1:${app_port}/readyz"');
   });
 });

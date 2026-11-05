@@ -4,6 +4,8 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-04
+
 ### Added
 
 - Add one login entry for the existing administrator and mailbox users authenticated against their Stalwart credentials.
@@ -12,6 +14,17 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 - Add Inbox, Sent and Drafts views, compose, reply, reply-all, forward, attachments, server-side drafts and JMAP EmailSubmission.
 - Add authenticated SMTP Submission on 587 STARTTLS and 465 implicit TLS while retaining SMTP 25 for server delivery.
 - Generate DKIM keys through Stalwart bootstrap and restrict outbound SMTP 25 to the Stalwart service user.
+
+### Security
+
+- Enforce role-bound and account-bound sessions, CSRF protection, login and sending limits, sender matching, attachment ownership, and cross-account isolation.
+- Keep external login and sending independently disabled for new mailboxes while leaving mail reception enabled.
+- Reject anonymous relay, sender spoofing, and outbound SMTP from processes other than Stalwart.
+
+### Validation
+
+- Complete real Stalwart 1.0.1 JMAP, IMAP, SMTP Submission, direct-MX, attachment, draft, Sent, permission-matrix and isolation acceptance on the test installation.
+- Confirm controlled direct delivery to Gmail with SPF, DKIM and DMARC passing. Gmail accepted the message but placed it in Spam; new-domain and new-IP reputation remain outside the software release gate.
 
 ## [0.1.4] - 2026-11-04
 

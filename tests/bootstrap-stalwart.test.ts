@@ -50,7 +50,11 @@ describe("Stalwart bootstrap maintenance", () => {
         ["x:NetworkListener/query", { ids: ["smtp-1", "http-1"] }, "lq"],
         ["x:Certificate/query", { ids: ["certificate-1"] }, "cq"],
       ];
-      if (request === 2) return [["x:NetworkListener/get", { list: [
+      if (request === 2) return [
+        ["x:DkimSignature/query", { ids: ["dkim-1"] }, "dkim-query"],
+        ["x:Domain/get", { list: [{ id: "domain-1", dkimManagement: { "@type": "Automatic" } }] }, "domain-get"],
+      ];
+      if (request === 3) return [["x:NetworkListener/get", { list: [
         { id: "smtp-1", name: "smtp" }, { id: "http-1", name: "http" },
       ] }, "lg"]];
       return [
@@ -65,12 +69,13 @@ describe("Stalwart bootstrap maintenance", () => {
       ...process.env, MODE: "configure", STALWART_BASE_URL: test.baseUrl,
       OUTPUT_FILE: test.outputFile, ADMIN_CREDENTIAL_FILE: test.credentialFile,
       MAIL_HOST: "mail.example.test", MAIL_DOMAIN: "example.test",
+      SERVICE_PASSWORD: "stable-service-password-1234567890",
     } });
 
-    const mutation = test.payloads[2].methodCalls;
+    const mutation = test.payloads[3].methodCalls;
     expect(mutation[0][1].update["service-1"].permissions.enabledPermissions).toMatchObject({ emailSend: true, jmapEmailCreate: true, jmapEmailSubmissionCreate: true, jmapBlobUpload: true });
     expect(mutation[0][1].update["service-1"].permissions.disabledPermissions).toEqual({});
-    expect(mutation[0][1].update["service-1"].credentials["0"].secret.length).toBeGreaterThan(30);
+    expect(mutation[0][1].update["service-1"].credentials["0"].secret).toBe("stable-service-password-1234567890");
     expect(mutation[1][1].update["certificate-1"].certificate.filePath).toBe("/etc/dx-youxiang/tls/fullchain.pem");
     expect(mutation[2][1].create).toMatchObject({
       submission: { bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false },
@@ -81,8 +86,82 @@ describe("Stalwart bootstrap maintenance", () => {
       minPasswordStrength: "zero",
     } } }, "authentication"]);
     expect(JSON.parse(await readFile(test.outputFile, "utf8"))).toMatchObject({
-      domainId: "domain-1", serviceId: "service-1", serviceUsername: "dx-youxiang@example.test",
+      domainId: "domain-1", serviceId: "service-1", serviceUsername: "dx-youxiang@example.test", generatedDkimKeys: false,
     });
+  });
+
+  it("enables official DKIM management for an upgraded manual domain and can restore receive-only listeners", async () => {
+    let request = 0;
+    const test = await fixture(() => {
+      request += 1;
+      if (request === 1) return [
+        ["x:Domain/query", { ids: ["domain-1"] }, "dq"],
+        ["x:Account/query", { ids: ["service-1"] }, "aq"],
+        ["x:NetworkListener/query", { ids: ["smtp-1", "http-1", "submission-1"] }, "lq"],
+        ["x:Certificate/query", { ids: ["certificate-1"] }, "cq"],
+      ];
+      if (request === 2) return [
+        ["x:DkimSignature/query", { ids: [] }, "dkim-query"],
+        ["x:Domain/get", { list: [{ id: "domain-1", dkimManagement: { "@type": "Manual" } }] }, "domain-get"],
+      ];
+      if (request === 3) return [["x:NetworkListener/get", { list: [
+        { id: "smtp-1", name: "smtp" }, { id: "http-1", name: "http" }, { id: "submission-1", name: "submission" },
+      ] }, "lg"]];
+      if (request === 4) return [
+        ["x:Domain/set", { updated: { "domain-1": null } }, "dkim-enable"],
+        ["x:Account/set", { updated: { "service-1": null } }, "service"],
+        ["x:Certificate/set", { updated: { "certificate-1": null } }, "cert"],
+        ["x:NetworkListener/set", { updated: { "smtp-1": null, "http-1": null, "submission-1": null } }, "listeners"],
+        ["x:Authentication/set", { updated: { singleton: null } }, "authentication"],
+      ];
+      return [["x:DkimSignature/query", { ids: ["dkim-1"] }, "dkim-query"]];
+    });
+
+    await run(process.execPath, ["scripts/bootstrap-stalwart.mjs"], { cwd: process.cwd(), env: {
+      ...process.env, MODE: "configure", STALWART_BASE_URL: test.baseUrl,
+      OUTPUT_FILE: test.outputFile, ADMIN_CREDENTIAL_FILE: test.credentialFile,
+      MAIL_HOST: "mail.example.test", MAIL_DOMAIN: "example.test",
+      SERVICE_PASSWORD: "stable-service-password-1234567890",
+    } });
+
+    const mutation = test.payloads[3].methodCalls;
+    expect(mutation[0]).toEqual(["x:Domain/set", { update: { "domain-1": {
+      dkimManagement: { "@type": "Automatic" },
+    } } }, "dkim-enable"]);
+    expect(JSON.parse(await readFile(test.outputFile, "utf8"))).toMatchObject({ generatedDkimKeys: true });
+
+    const receiveOnly = await fixture((_payload) => {
+      const index = receiveOnly.payloads.length;
+      if (index === 1) return [
+        ["x:Domain/query", { ids: ["domain-1"] }, "dq"],
+        ["x:Account/query", { ids: ["service-1"] }, "aq"],
+        ["x:NetworkListener/query", { ids: ["smtp-1", "http-1", "submission-1", "submissions-1"] }, "lq"],
+        ["x:Certificate/query", { ids: ["certificate-1"] }, "cq"],
+      ];
+      if (index === 2) return [
+        ["x:DkimSignature/query", { ids: ["dkim-1"] }, "dkim-query"],
+        ["x:Domain/get", { list: [{ id: "domain-1", dkimManagement: { "@type": "Automatic" } }] }, "domain-get"],
+      ];
+      if (index === 3) return [["x:NetworkListener/get", { list: [
+        { id: "smtp-1", name: "smtp" }, { id: "http-1", name: "http" },
+        { id: "submission-1", name: "submission" }, { id: "submissions-1", name: "submissions" },
+      ] }, "lg"]];
+      return [
+        ["x:Account/set", { updated: { "service-1": null } }, "service"],
+        ["x:Certificate/set", { updated: { "certificate-1": null } }, "cert"],
+        ["x:NetworkListener/set", { updated: { "smtp-1": null, "http-1": null }, destroyed: ["submission-1", "submissions-1"] }, "listeners"],
+        ["x:Authentication/set", { updated: { singleton: null } }, "authentication"],
+      ];
+    });
+    await run(process.execPath, ["scripts/bootstrap-stalwart.mjs"], { cwd: process.cwd(), env: {
+      ...process.env, MODE: "configure", ENABLE_SENDING: "false", STALWART_BASE_URL: receiveOnly.baseUrl,
+      OUTPUT_FILE: receiveOnly.outputFile, ADMIN_CREDENTIAL_FILE: receiveOnly.credentialFile,
+      MAIL_HOST: "mail.example.test", MAIL_DOMAIN: "example.test",
+      SERVICE_PASSWORD: "stable-service-password-1234567890",
+    } });
+    const rollbackMutation = receiveOnly.payloads[3].methodCalls;
+    expect(rollbackMutation[0][1].update["service-1"].permissions.disabledPermissions).toEqual({ emailSend: true });
+    expect(rollbackMutation[2][1].destroy).toEqual(["submission-1", "submissions-1"]);
   });
 
   it("schedules the documented account reindex task with the recovery administrator", async () => {

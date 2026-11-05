@@ -49,6 +49,7 @@ if (mode === "bootstrap") {
   if (!hostname || !domain) throw new Error("MAIL_HOST and MAIL_DOMAIN are required");
   const adminUser = credentials.username;
   const adminPass = credentials.secret;
+  const enableSending = process.env.ENABLE_SENDING !== "false";
 
   const lookup = await call(adminUser, adminPass, [
     ["x:Domain/query", { filter: { name: domain } }, "dq"],
@@ -58,12 +59,20 @@ if (mode === "bootstrap") {
   ]);
   const domainId = lookup.find(([, , id]) => id === "dq")?.[1]?.ids?.[0];
   if (!domainId) throw new Error("Default domain was not found");
+  const dkimState = await call(adminUser, adminPass, [
+    ["x:DkimSignature/query", { filter: { domainId } }, "dkim-query"],
+    ["x:Domain/get", { ids: [domainId], properties: ["id", "dkimManagement"] }, "domain-get"],
+  ]);
+  const dkimIds = dkimState.find(([, , id]) => id === "dkim-query")?.[1]?.ids ?? [];
+  const domainRecord = dkimState.find(([, , id]) => id === "domain-get")?.[1]?.list?.[0];
+  const needsDkimKeys = enableSending && dkimIds.length === 0 && domainRecord?.dkimManagement?.["@type"] === "Manual";
   const accountIds = lookup.find(([, , id]) => id === "aq")?.[1]?.ids ?? [];
   const listenerIds = lookup.find(([, , id]) => id === "lq")?.[1]?.ids ?? [];
   const certificateIds = lookup.find(([, , id]) => id === "cq")?.[1]?.ids ?? [];
   const listenerGet = await call(adminUser, adminPass, [["x:NetworkListener/get", { ids: listenerIds }, "lg"]]);
   const listeners = listenerGet[0][1].list ?? [];
-  const servicePassword = randomBytes(30).toString("base64url");
+  const servicePassword = process.env.SERVICE_PASSWORD ?? randomBytes(30).toString("base64url");
+  if (servicePassword.length < 24) throw new Error("SERVICE_PASSWORD must contain at least 24 characters");
   const mailboxPermissions = {
     emailReceive: true,
     jmapMailboxGet: true, jmapMailboxQuery: true,
@@ -88,14 +97,14 @@ if (mode === "bootstrap") {
     "@type": "User", name: "dx-youxiang", domainId, description: "Dx 邮箱 service identity",
     credentials: { "0": { "@type": "Password", secret: servicePassword } },
     roles: { "@type": "Custom", roleIds: {} },
-    permissions: { "@type": "Replace", enabledPermissions: { ...mailboxPermissions, ...sendPermissions,
+    permissions: { "@type": "Replace", enabledPermissions: { ...mailboxPermissions, ...(enableSending ? sendPermissions : {}),
       authenticate: true, impersonate: true,
       jmapEmailGet: true, jmapEmailQuery: true, jmapEmailUpdate: true, jmapEmailDestroy: true,
       jmapMailboxGet: true, jmapMailboxQuery: true, jmapBlobGet: true,
       sysAccountGet: true, sysAccountCreate: true, sysAccountUpdate: true, sysAccountDestroy: true, sysAccountQuery: true,
       sysDomainGet: true, sysDomainCreate: true, sysDomainUpdate: true, sysDomainDestroy: true, sysDomainQuery: true,
       sysActionCreate: true, actionReloadTlsCertificates: true
-    }, disabledPermissions: {} }, quotas: {}, encryptionAtRest: { "@type": "Disabled" }
+    }, disabledPermissions: enableSending ? {} : { emailSend: true } }, quotas: {}, encryptionAtRest: { "@type": "Disabled" }
   };
   const create = {};
   const update = {};
@@ -109,11 +118,14 @@ if (mode === "bootstrap") {
     if (item.name === "smtp") listenerUpdate[item.id] = { bind: { "0.0.0.0:25": true }, useTls: true, implicitTls: false };
     else if (item.name === "imaps") listenerUpdate[item.id] = { bind: { "0.0.0.0:993": true }, useTls: true, implicitTls: true };
     else if (item.name === "http") listenerUpdate[item.id] = { bind: { "127.0.0.1:8080": true }, useTls: false, implicitTls: false };
-    else if (item.name === "submission") { hasSubmission = true; listenerUpdate[item.id] = { bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false }; }
-    else if (item.name === "submissions") { hasSubmissions = true; listenerUpdate[item.id] = { bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true }; }
+    else if (item.name === "submission" && enableSending) { hasSubmission = true; listenerUpdate[item.id] = { bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false }; }
+    else if (item.name === "submissions" && enableSending) { hasSubmissions = true; listenerUpdate[item.id] = { bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true }; }
     else listenerDestroy.push(item.id);
   }
   const methods = [];
+  if (needsDkimKeys) methods.push(["x:Domain/set", { update: { [domainId]: {
+    dkimManagement: { "@type": "Automatic" },
+  } } }, "dkim-enable"]);
   methods.push(["x:Account/set", Object.keys(create).length ? { create } : { update }, "service"]);
   const certificateDefinition = {
     certificate: { "@type": "File", filePath: certPath }, privateKey: { "@type": "File", filePath: keyPath }
@@ -122,8 +134,8 @@ if (mode === "bootstrap") {
     ? { update: { [certificateIds[0]]: certificateDefinition } }
     : { create: { cert: certificateDefinition } }, "cert"]);
   const listenerCreate = {};
-  if (!hasSubmission) listenerCreate.submission = { name: "submission", bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false };
-  if (!hasSubmissions) listenerCreate.submissions = { name: "submissions", bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true };
+  if (enableSending && !hasSubmission) listenerCreate.submission = { name: "submission", bind: { "0.0.0.0:587": true }, protocol: "smtp", useTls: true, implicitTls: false };
+  if (enableSending && !hasSubmissions) listenerCreate.submissions = { name: "submissions", bind: { "0.0.0.0:465": true }, protocol: "smtp", useTls: true, implicitTls: true };
   methods.push(["x:NetworkListener/set", { create: listenerCreate, update: listenerUpdate, destroy: listenerDestroy }, "listeners"]);
   methods.push(["x:Authentication/set", { update: { singleton: {
     minPasswordLength: 6,
@@ -137,7 +149,16 @@ if (mode === "bootstrap") {
   }
   const serviceResult = configured.find(([, , id]) => id === "service")?.[1];
   const serviceId = serviceResult?.created?.service?.id ?? accountIds[0];
-  await store({ domainId, serviceId, serviceUsername: `dx-youxiang@${domain}`, servicePassword });
+  if (needsDkimKeys) {
+    let generated = false;
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      const response = await call(adminUser, adminPass, [["x:DkimSignature/query", { filter: { domainId } }, "dkim-query"]]);
+      if ((response[0]?.[1]?.ids ?? []).length > 0) { generated = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    if (!generated) throw new Error("Stalwart did not generate DKIM keys within 45 seconds");
+  }
+  await store({ domainId, serviceId, serviceUsername: `dx-youxiang@${domain}`, servicePassword, generatedDkimKeys: needsDkimKeys });
 } else if (mode === "reindex") {
   const credentials = JSON.parse(await readFile(process.env.ADMIN_CREDENTIAL_FILE, "utf8"));
   const result = await call(credentials.username, credentials.secret, [["x:Task/set", { create: { reindex: {

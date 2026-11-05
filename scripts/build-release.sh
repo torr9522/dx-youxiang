@@ -14,11 +14,14 @@ test "$(git -C "$root" rev-parse "$ref^{commit}")" = "$(git -C "$root" rev-parse
 
 mkdir -p "$output"
 archive="dx-youxiang-v${version}.tar.gz"
+zip_archive="dx-youxiang-v${version}.zip"
 git -C "$root" archive --format=tar --prefix="dx-youxiang-v${version}/" "$ref" | gzip -n > "$output/$archive"
+git -C "$root" archive --format=zip --prefix="dx-youxiang-v${version}/" --output="$output/$zip_archive" "$ref"
 cp "$root/install.sh" "$output/install.sh"
+cp "$root/RELEASE_NOTES.md" "$output/RELEASE_NOTES.md"
 cp "$root/sbom.cdx.json" "$output/sbom.cdx.json"
 (
   cd "$output"
-  sha256sum "$archive" install.sh sbom.cdx.json > SHA256SUMS
+  sha256sum "$archive" "$zip_archive" install.sh RELEASE_NOTES.md sbom.cdx.json > SHA256SUMS
 )
 echo "Release assets created in $output"

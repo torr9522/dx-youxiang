@@ -363,6 +363,6 @@ systemctl start dx-youxiang-certificate-retry.service
 "$APP_BASE/current/scripts/health-check.sh"
 
 printf '\nPROJECT=dx-youxiang\nVERSION=%s\nMODE=%s\nACME_MODE=%s\nACME_DIRECTORY=%s\nWEB_URL=https://%s\nADMIN_USERNAME=admin\n' \
-  "${DX_YOUXIANG_VERSION:-0.1.4}" "$install_mode" "$ACME_MODE" "$ACME_DIRECTORY" "$MAIL_HOST"
+  "${DX_YOUXIANG_VERSION:-0.1.5}" "$install_mode" "$ACME_MODE" "$ACME_DIRECTORY" "$MAIL_HOST"
 printf 'ADMIN_PASSWORD=the password entered during installation (not written to logs)\n'
 printf 'MAIL_DOMAIN=%s\nMAIL_HOST=%s\nAPP_PORT=%s\n' "$MAIL_DOMAIN" "$MAIL_HOST" "$APP_PORT"

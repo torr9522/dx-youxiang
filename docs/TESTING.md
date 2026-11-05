@@ -16,7 +16,7 @@ Start with newly installed Debian 12 AMD64. Use an immutable build and the forma
 
 Create two real mailbox accounts with distinct account IDs. Verify unified login, all four external-login/send states, Inbox/Sent/Drafts, compose/reply/forward/attachment, JMAP and SMTP submission, sender matching, queue status, IMAP, rapid A/B switching and direct cross-account API rejection. Existing IMAP connections may persist after disabling; new authentication must fail.
 
-Use an authorized independent Gmail or Outlook account for at least one real inbound delivery. Never send the test from the mail server. Open-relay tests must use controlled addresses and must not emit mail to third parties.
+Use an authorized independent Gmail or Outlook account for at least one real inbound delivery. Verify outbound delivery only to an explicitly authorized recipient, record the queue state and remote SMTP response, and inspect the received message's authentication headers. Open-relay tests must use controlled addresses and must not emit mail to third parties.
 
 ## Recovery Gate
 
