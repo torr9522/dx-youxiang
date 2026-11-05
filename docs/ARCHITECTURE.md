@@ -44,7 +44,7 @@ Stalwart uses its recommended single-node RocksDB store with the default blob an
 - `scripts/bootstrap-stalwart.mjs`: one-time service identity, listeners, TLS and permission configuration.
 - `scripts/*.sh` and `deploy`: native lifecycle, systemd, Caddy, Certbot, nftables and backup assets.
 
-The client uses React Router with browser history for `/inbox`, `/inbox/:mailboxId`, `/inbox/:mailboxId/:messageId`, `/mailboxes`, `/settings`, and the `/settings/domains`, `/settings/audit`, and `/settings/translation` subpages. `/domains` and `/audit` remain compatible redirects. User navigation pushes history; canonical and authentication redirects replace it. A same-origin allowlist validates post-login return targets.
+The client uses React Router with browser history for `/inbox`, `/inbox/:mailboxId`, `/inbox/:mailboxId/:messageId`, `/inbox/:mailboxId/junk`, `/inbox/:mailboxId/junk/:messageId`, `/mailboxes`, `/settings`, and the `/settings/domains`, `/settings/audit`, and `/settings/translation` subpages. `/domains` and `/audit` remain compatible redirects. User navigation pushes history; canonical and authentication redirects replace it. A same-origin allowlist validates post-login return targets.
 
 The application server returns the SPA entry point only for this explicit route allowlist; health, API, mail-resource and unknown static paths retain their own status and content type. Route identifiers are navigation hints only. Every mailbox, message, image and attachment request remains authorized by the server-side SQLite mailbox-to-Stalwart-account mapping. Desktop routing retains the three-column workspace, while mobile routes select the mailbox, list, or detail stage without creating a second navigation model.
 
@@ -59,6 +59,12 @@ Internet MTA
   -> backend sanitizes/presents mail
   -> authenticated administrator browser
 ```
+
+## Junk management flow
+
+Stalwart remains the only spam classifier. Delivery-time classification can place a message in the role=`junk` mailbox and apply `$junk`; Dx 邮箱 never derives spam status from the subject or body. The backend resolves role mailboxes with `Mailbox/get`, queries Junk with `Email/query(inMailbox)`, and uses account-bound `Email/set` patches for user actions. Reporting spam removes Inbox membership, adds Junk and patches `$junk`/`$notjunk`. Restoring mail performs the inverse and sets `$notjunk`. Deleting from Junk replaces membership with Trash and never uses `Email/set.destroy`.
+
+The message Email ID and blob references do not change. All account IDs come from the authenticated SQLite mailbox mapping, and `Email/get` prevalidation makes foreign IDs item-level failures before an update is attempted.
 
 ## Send Flow
 

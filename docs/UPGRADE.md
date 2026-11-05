@@ -10,6 +10,8 @@ Read both Stalwart and Dx 邮箱 release notes before upgrading. Never skip a St
 
 The application updater retains the previous release and automatically restores its symlink if `/readyz` fails. Database schema changes must remain backward compatible for this rollback. Stalwart rollback is supported only when its upstream notes say the data format is compatible; otherwise restore the pre-upgrade backup.
 
+The `0.1.7` application upgrade adds Junk folder navigation and JMAP mail-management operations without a database migration or Stalwart configuration change. It preserves mailbox accounts, permissions, messages, MIME, attachments, DKIM, DNS and spam policy. The upgrade neither creates a classifier nor changes thresholds; it exposes the existing role=`junk` mailbox and uses standard account-bound `Email/set` operations.
+
 The `0.1.6` application upgrade repairs administrator compose access without a database or Stalwart schema change. It preserves every mailbox address, account ID, credential, message, attachment and permission value. Administrators can send only from a selected mailbox whose current `emailSend` value is true; mailbox-user authentication and submission remain unchanged.
 
 The `0.1.5` application upgrade adds backward-compatible mailbox send state, role-bound sessions and login-attempt storage. Existing mailbox rows receive `email_send=0`; mail reception and existing external-login state are unchanged. The formal upgrader reuses the existing Stalwart service credential, installs the Phase 1.8 Submission listeners and service permissions, and reapplies the project-owned Stalwart-only outbound SMTP policy. It does not enable sending for any mailbox.

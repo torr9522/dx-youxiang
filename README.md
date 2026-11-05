@@ -2,14 +2,14 @@
 
 Dx 邮箱 (`dx-youxiang`) is a mailbox administration and webmail application for [Stalwart Mail Server](https://stalw.art/). It creates independent Stalwart users, keeps every account isolated, and provides one role-aware login for the administrator and enabled mailbox users.
 
-Latest stable version: `v0.1.6`.
+Latest stable version: `v0.1.7`.
 
 ## What it provides
 
 - Real mailbox accounts, never aliases or a shared catch-all inbox
 - Chinese administrator UI with mailbox, message, attachment and domain management
 - Per-mailbox external-login and send switches, both disabled by default
-- Administrator and mailbox-user webmail with Inbox, Sent, Drafts, compose, reply, forward and attachments, constrained by each mailbox's send switch
+- Administrator and mailbox-user webmail with Inbox, Sent, Drafts and Junk, including server-side search, spam/not-spam actions, Trash-safe deletion, compose, reply, forward and attachments
 - IMAPS plus authenticated SMTP Submission on 587 STARTTLS and 465 implicit TLS
 - JMAP access scoped server-side to the selected mailbox account ID
 - Sanitized HTML mail, blocked remote images and safe attachment downloads
@@ -29,10 +29,10 @@ Node.js 26 LTS, Stalwart 1.0.1 and Caddy 2.11.7 are pinned. The installer verifi
 
 ## Installation
 
-Every version is installed from its immutable GitHub Release asset. A minimal Debian installation may contain neither `curl` nor `wget`, so the single command first installs the TLS bootstrap dependencies with Debian's package manager. Example for an explicitly pinned `v0.1.6` installation:
+Every version is installed from its immutable GitHub Release asset. A minimal Debian installation may contain neither `curl` nor `wget`, so the single command first installs the TLS bootstrap dependencies with Debian's package manager. Example for an explicitly pinned `v0.1.7` installation:
 
 ```sh
-apt-get update && apt-get install -y ca-certificates curl tar && DX_YOUXIANG_VERSION=0.1.6 bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.6/install.sh)
+apt-get update && apt-get install -y ca-certificates curl tar && DX_YOUXIANG_VERSION=0.1.7 bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.7/install.sh)
 ```
 
 The installer asks only for the mail domain, mail hostname, and administrator password. It verifies public and authoritative A/MX answers, release checksums, pinned upstream binaries, Caddy configuration, TLS issuance, systemd services, firewall policy, initial encrypted backup, and readiness. Public SMTP remains gated until trusted TLS, readiness, and the initial encrypted backup pass. The installer never edits DNS.
@@ -40,7 +40,7 @@ The installer asks only for the mail domain, mail hostname, and administrator pa
 Install the latest stable release with:
 
 ```sh
-apt-get update && apt-get install -y ca-certificates curl tar && bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.6/install.sh)
+apt-get update && apt-get install -y ca-certificates curl tar && bash <(curl -fsSL https://raw.githubusercontent.com/torr9522/dx-youxiang/v0.1.7/install.sh)
 ```
 
 See [Deployment](docs/DEPLOYMENT.md), [Architecture](docs/ARCHITECTURE.md), [Operations](docs/OPERATIONS.md), and [Backup and restore](docs/BACKUP_RESTORE.md) before using the server for important mail.

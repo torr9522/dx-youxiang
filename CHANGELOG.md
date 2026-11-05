@@ -4,6 +4,25 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-05
+
+### Added
+
+- Add a role-detected Junk folder with unread counts, server-side search, read filters, pagination, refresh, direct routes and message detail.
+- Add single-message and current-page batch actions for reporting spam, restoring false positives to Inbox and moving Junk mail to Trash.
+- Preserve Junk context across direct URLs and browser history while reusing the existing safe HTML, CID image, remote-image consent, translation and attachment paths.
+
+### Security
+
+- Resolve Inbox, Junk and Trash only from JMAP mailbox roles and resolve every Stalwart account from the authenticated server-side mailbox row.
+- Reject missing and cross-account Email IDs, cap and deduplicate batches, preserve unrelated mailbox memberships and keywords, and report partial JMAP failures without trusting browser-supplied account IDs.
+- Use JMAP `Email/set` membership and `$junk`/`$notjunk` patches; no message copy, MIME rewrite, direct storage mutation or spam-threshold change is performed.
+
+### Validation
+
+- Cover role discovery, server-side Junk queries, keyword and membership patches, partial failures, account isolation, deep routes, unread counts and batch UI behavior in automated tests.
+- Keep Stalwart pinned to 1.0.1 with no SQLite schema, DNS, PTR, Caddy ownership, global Node.js or firewall-policy change.
+
 ## [0.1.6] - 2026-11-05
 
 ### Fixed

@@ -23,6 +23,11 @@ Dx Youxiang
 |   |-- verification-code extraction
 |   |-- attachment ownership check and download
 |   `-- read/unread and delete
+|-- Junk management
+|   |-- JMAP role discovery and server-side list/search/pagination
+|   |-- unread counts and folder-preserving deep routes
+|   |-- single/current-page spam and not-spam actions
+|   `-- Trash-safe deletion with account-bound partial results
 |-- Webmail sending
 |   |-- server-side Drafts and Sent
 |   |-- compose, reply, reply-all, forward and attachments

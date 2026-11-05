@@ -58,3 +58,10 @@ The rename does not intentionally alter APIs, the database schema, Stalwart acco
 - The v0.1.5 workspace rendered compose/reply/forward only when `isAdmin` was false, so an administrator lost the webmail actions even when the selected mailbox had `emailSend=true`.
 - The v0.1.5 upload, draft and submission routes also accepted only a mailbox-user session. The repair introduces an explicit administrator service-identity path while retaining the mailbox-user credential path.
 - Both roles now depend on the current selected mailbox `emailSend` value. The backend fixes the target account and From identity from SQLite on every request, rejects cross-mailbox and disabled-mailbox attempts, and records the real actor separately from the sending mailbox.
+
+## Phase 1.9 Junk Mail Management
+
+- RFC 8621 defines `$junk` as definitely spam and `$notjunk` as definitely legitimate. Stalwart 1.0.1 exposes the standard `junk` and `trash` mailbox roles, places delivery-classified spam in Junk and trains its classifier from JMAP keyword updates.
+- Dx 邮箱 discovers standard folders by role, queries Junk on the server and never infers spam from message content. Manual report and restore operations update mailbox membership plus the standard keywords without copying or reconstructing a message.
+- Junk deletion moves the original Email to Trash. Batch actions are limited to the current 50-message page, prevalidate ownership under the server-resolved account and return per-ID partial failures.
+- Junk routes retain folder context through refresh and browser history, while the existing safe HTML, CID, remote-image consent, translation and attachment paths remain shared.

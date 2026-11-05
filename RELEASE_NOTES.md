@@ -1,36 +1,32 @@
-# Dx Youxiang v0.1.6
+# Dx Youxiang v0.1.7
 
-This stable patch preserves all v0.1.5 mailbox-user, submission, translation and routing behavior while repairing administrator compose access.
+This stable release adds complete Junk mailbox management on top of Stalwart 1.0.1 and JMAP without changing the spam engine, scoring policy or existing mailbox permissions.
 
-## Fixed
+## Junk mailbox management
 
-- Show compose, reply, reply-all and forward actions to an administrator when the currently selected mailbox has `emailSend=true`.
-- Hide those actions immediately after switching to or refreshing a mailbox with `emailSend=false`.
-- Support administrator attachment upload, draft creation and JMAP EmailSubmission through the root-protected Stalwart service identity.
-- Close an open compose dialog when switching mailboxes so draft content cannot silently change sending identity.
+- Discover Inbox, Junk and Trash by their standard JMAP roles rather than localized folder names.
+- List Junk directly through server-side `Email/query`, with search, read filters, pagination, refresh, unread counts and direct browser routes.
+- Report one or a current-page batch of Inbox messages as spam by moving membership to Junk and applying the standard `$junk` keyword.
+- Restore false positives to Inbox with `$notjunk`, and move deleted Junk messages to Trash instead of permanently destroying them.
+- Keep message IDs, original MIME, attachments, read state and unrelated mailbox memberships intact.
 
-## Security
+## Security and compatibility
 
-- Re-resolve the selected mailbox on every upload, draft and submission request and enforce its current active and `emailSend` state.
-- Derive the immutable Stalwart account ID and From address only from the server-side mailbox row. Browser-supplied account or sender identities cannot override them.
-- Keep mailbox-user submission on the user's encrypted session credential and deny cross-mailbox requests.
-- Record the real actor, actor role, selected mailbox and derived From address without logging credentials or message bodies.
-
-## Upgrade and compatibility
-
-- No SQLite migration or Stalwart data-format change is required.
-- Existing mailbox addresses, account IDs, passwords, messages, attachments, folders, read state, external-login and send permissions are preserved.
-- Stalwart remains pinned to 1.0.1. The release does not change DNS, PTR, Caddy ownership, global Node.js, the outbound SMTP firewall policy or the no-relay architecture.
+- Every action derives the immutable Stalwart account ID from the authenticated server-side mailbox row. Browser-supplied account IDs cannot select another account.
+- Missing and foreign Email IDs are rejected per item; batches are deduplicated, bounded to 50 and return exact partial-failure results.
+- Existing safe HTML, CID image, remote-image consent, translation, attachment and send-permission paths are reused unchanged.
+- No SQLite migration or Stalwart data-format change is required. Stalwart remains pinned to 1.0.1.
+- The release does not change DNS, PTR, spam thresholds, Caddy ownership, global Node.js, SMTP firewall rules or any mailbox permission value.
 
 ## Validation
 
-- All 117 automated tests pass, including administrator and mailbox-user permission matrices, mailbox switching, forged account/From attempts, draft, attachment and service-identity submission coverage.
-- The test installation completed administrator desktop/mobile browser acceptance, a real internal-domain JMAP submission, derived-From verification, disabled-mailbox rejection and mailbox-user isolation checks.
-- TypeScript, ESLint, production build, ShellCheck, license audit, dependency audits, CycloneDX SBOM and full-history Gitleaks gates pass.
+- Automated coverage includes JMAP mailbox-role discovery, server-side Junk query, membership/keyword patches, partial failures, account isolation, deep routes, browser back, unread refresh and current-page batch actions.
+- TypeScript, ESLint, the production build and the full Vitest suite pass locally before preview deployment.
+- Real Stalwart, browser, backup/restore and deployment results are recorded in the final release acceptance rather than inferred from mocks.
 
 ## Known limitations
 
-- Queue acceptance means submitted or queued, not final recipient delivery.
+- Automatic classification depends on the deployed Stalwart spam filter and its existing delivery-time policy. This application displays the server's Junk mailbox; it does not score mail.
+- The release adds no full Trash management page. Junk deletion safely moves mail to the server Trash role.
+- Queue acceptance still means submitted or queued, not final recipient delivery.
 - Existing authenticated IMAP or SMTP connections may remain active until disconnect or timeout because Stalwart 1.0.1 has no verified per-account connection-termination API.
-- The earlier Gmail direct-delivery acceptance passed SPF, DKIM and DMARC but the message was placed in Spam. This patch does not change sender reputation or claim Inbox placement.
-- Translation availability and retention still depend on the administrator-selected provider; fresh installations have no public provider, endpoint, key or model default.
