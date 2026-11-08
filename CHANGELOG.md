@@ -4,10 +4,29 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-11-08
+
 ### Fixed
 
 - Decouple administrator domain metadata from Inbox initialization so a slow or failed `/api/domains` request cannot block mailbox, folder or message loading.
 - Distinguish pending, failed and genuinely empty message lists so the first render no longer reports a false empty mailbox while JMAP data is still loading.
+
+### Performance
+
+- Load the administrator mailbox mapping without global statistics, initialize the selected Inbox and folder state immediately, and merge other mailbox statistics from an independent background request.
+- Limit manual refresh to the selected mailbox's message list and folder state, reducing the measured path from three browser APIs and six JMAP HTTP requests to two browser APIs and three JMAP HTTP requests.
+- Add immediate pending mailbox/folder feedback while preventing an old mailbox or folder list from being presented under the new selection.
+- Add a bounded 96-entry, session-generation and role-scoped in-memory LRU for message lists, folder state and read message details, with 10-second freshness, five-minute maximum stale reuse, background revalidation and exact in-flight request deduplication.
+
+### Security
+
+- Keep cache keys bound to the session generation, role, numeric server-authorized mailbox ID, folder, search/read/order filters and pagination; clear all values on logout, 401 or session replacement.
+- Invalidate mailbox reads after mail mutations and reject obsolete results through the existing request generations. No credentials, Stalwart account IDs or message data are persisted in browser storage.
+
+### Validation
+
+- Cover independent Inbox initialization, current-mailbox-only refresh, pending selection feedback, cross-mailbox stale-display prevention, ordinary-user behavior, cache capacity, isolation, request deduplication, invalidation and 401 cleanup.
+- Preserve Stalwart 1.0.1, SQLite and all existing API/session/permission boundaries. This release has no database migration or mail-storage format change.
 
 ## [0.1.7] - 2026-11-05
 

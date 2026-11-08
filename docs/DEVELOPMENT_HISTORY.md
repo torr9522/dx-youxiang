@@ -65,3 +65,11 @@ The rename does not intentionally alter APIs, the database schema, Stalwart acco
 - Dx 邮箱 discovers standard folders by role, queries Junk on the server and never infers spam from message content. Manual report and restore operations update mailbox membership plus the standard keywords without copying or reconstructing a message.
 - Junk deletion moves the original Email to Trash. Batch actions are limited to the current 50-message page, prevalidate ownership under the server-resolved account and return per-ID partial failures.
 - Junk routes retain folder context through refresh and browser history, while the existing safe HTML, CID, remote-image consent, translation and attachment paths remain shared.
+
+## Phase 2.0 Webmail Read Performance
+
+- `a834562` separated message-list loading, ready, error and empty states and kept administrator domain loading outside Inbox initialization.
+- Administrator startup now reads the SQLite mailbox mapping first, starts the selected Inbox/folder reads without waiting for all-mailbox JMAP statistics, and merges those statistics later.
+- Manual refresh no longer reloads all mailbox rows and statistics. It refreshes only the selected message page and folder state while preserving known values for other mailboxes.
+- A 96-entry browser-memory LRU scopes lists, folders and details to one session generation, role and numeric mailbox mapping. It performs stale-while-revalidate reads, exact request deduplication and mutation/session invalidation without persistent storage or a new dependency.
+- Pending mailbox/folder state updates selection immediately while list identity remains explicit, so slow networks never label an old Inbox list as Junk or show one mailbox's rows under another mailbox.

@@ -13,6 +13,7 @@ Important invariants:
 - Passwords may be accepted only over authenticated CSRF-protected routes and must never be logged or returned.
 - Keep mail HTML sanitization and remote-image blocking server-side.
 - Test backup changes with an isolated restore, not by copying live RocksDB.
+- Keep the Phase 2 read cache in memory only. Its key must retain session generation, role, numeric mailbox ID, folder/message identity, search filters and pagination; clear it on logout/401 and invalidate mailbox entries after mutations.
 
 Release gates are typecheck, lint, unit/integration tests, production build, runtime dependency audit, license audit, Gitleaks history scan, SBOM generation, remote protocol tests and a real external inbound message. Do not tag a release stable while an external gate is pending.
 

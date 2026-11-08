@@ -10,6 +10,8 @@ Read both Stalwart and Dx 邮箱 release notes before upgrading. Never skip a St
 
 The application updater retains the previous release and automatically restores its symlink if `/readyz` fails. Database schema changes must remain backward compatible for this rollback. Stalwart rollback is supported only when its upstream notes say the data format is compatible; otherwise restore the pre-upgrade backup.
 
+The `0.1.8` application upgrade preserves the Phase 2 first-load state fix and optimizes existing React/API read paths. It adds only a browser-memory cache, request deduplication, independent administrator statistics and current-mailbox refresh. It has no SQLite migration, persistent cache, Stalwart configuration/data-format change, permission change, DNS change or new dependency. Rolling the application symlink back to `0.1.7` discards the in-memory cache naturally.
+
 The `0.1.7` application upgrade adds Junk folder navigation and JMAP mail-management operations without a database migration or Stalwart configuration change. It preserves mailbox accounts, permissions, messages, MIME, attachments, DKIM, DNS and spam policy. The upgrade neither creates a classifier nor changes thresholds; it exposes the existing role=`junk` mailbox and uses standard account-bound `Email/set` operations.
 
 The `0.1.6` application upgrade repairs administrator compose access without a database or Stalwart schema change. It preserves every mailbox address, account ID, credential, message, attachment and permission value. Administrators can send only from a selected mailbox whose current `emailSend` value is true; mailbox-user authentication and submission remain unchanged.

@@ -10,6 +10,8 @@ Tests must cover administrator/mailbox authentication, role-bound sessions, CSRF
 
 Phase 1.7 routing regression includes top navigation, mailbox and message URL changes, browser back/forward, direct message URLs, authenticated deep-link restoration, rejection of external return URLs, legacy settings routes, invalid mailbox/message states, list scroll restoration, JSON API 404 responses and the scoped SPA fallback. Translation regression includes concurrency limits, in-flight deduplication, cache timings, prompt-version invalidation, mixed-language and ordinary hyphenated words, protected identifiers, complete node mapping and bounded retries for incomplete output.
 
+Phase 2.0 performance regression covers lightweight mailbox mapping, Inbox independence from administrator statistics/domains, current-mailbox-only refresh, immediate pending folder/mailbox feedback, stale-list isolation, session/role/mailbox/folder/query/page cache keys, logout/401 cleanup, bounded LRU eviction, concurrent request deduplication, mutation invalidation and obsolete in-flight result rejection. Browser acceptance records cached display time separately from network revalidation time and repeats normal, +100 ms, +350 ms and +1000 ms latency cases.
+
 ## Clean Install Gate
 
 Start with newly installed Debian 12 AMD64. Use an immutable build and the formal installer; do not patch the server. Verify systemd enablement, reboot recovery, Caddy, trusted HTTPS, SMTP 25 STARTTLS, 587 STARTTLS, 465 TLS, IMAPS, `/healthz`, `/readyz`, backup timer, log rotation, disk threshold and Stalwart-only outbound SMTP.
