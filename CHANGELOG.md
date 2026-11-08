@@ -4,6 +4,11 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- Decouple administrator domain metadata from Inbox initialization so a slow or failed `/api/domains` request cannot block mailbox, folder or message loading.
+- Distinguish pending, failed and genuinely empty message lists so the first render no longer reports a false empty mailbox while JMAP data is still loading.
+
 ## [0.1.7] - 2026-11-05
 
 ### Added

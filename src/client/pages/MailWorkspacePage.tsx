@@ -12,6 +12,7 @@ type MobileStage = "mailboxes" | "messages" | "detail";
 type ReadFilter = "all" | "unread" | "read";
 type Folder = "inbox" | "sent" | "drafts" | "junk";
 type ComposeMode = "compose" | "reply" | "replyAll" | "forward";
+type MessageListStatus = "idle" | "loading" | "ready" | "error";
 
 function messagesPath(mailboxId: number, position: number, query: string, field: string, read: ReadFilter, order: string, folder: Folder) {
   const params = new URLSearchParams({ q: query, field, read, order, folder, position: String(position), limit: String(PAGE_SIZE) });
@@ -40,6 +41,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
   const [mailboxSearch, setMailboxSearch] = useState("");
   const [selectedMailboxId, setSelectedMailboxId] = useState<number | null>(initialMailboxId ?? null);
   const [messages, setMessages] = useState<MessageSummary[]>([]);
+  const [messageListStatus, setMessageListStatus] = useState<MessageListStatus>("idle");
   const [selectedMessage, setSelectedMessage] = useState<MessageDetail | null>(null);
   const [messageSearch, setMessageSearch] = useState("");
   const [searchField, setSearchField] = useState("text");
@@ -62,6 +64,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
   const [translationMode, setTranslationMode] = useState<"original" | "translated">("original");
   const [translationLoading, setTranslationLoading] = useState(false);
   const [error, setError] = useState("");
+  const [domainError, setDomainError] = useState("");
   const [toast, setToast] = useState("");
   const requestId = useRef(0);
   const folderRequestId = useRef(0);
@@ -100,6 +103,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
 
   const loadMessages = async (mailboxId: number, nextPosition = 0, query = messageSearch, field = searchField, read = readFilter, nextOrder = order, nextFolder = folder) => {
     const currentRequest = ++requestId.current;
+    setMessageListStatus("loading");
     setError("");
     try {
       const page = await api<MessagePage>(messagesPath(mailboxId, nextPosition, query, field, read, nextOrder, nextFolder));
@@ -112,8 +116,12 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       setSelectedMessage(null);
       setTranslatedMessage(null);
       setTranslationMode("original");
+      setMessageListStatus("ready");
     } catch (caught) {
-      if (currentRequest === requestId.current) setError((caught as Error).message);
+      if (currentRequest === requestId.current) {
+        setError((caught as Error).message);
+        setMessageListStatus("error");
+      }
     }
   };
 
@@ -165,19 +173,25 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       setTotal(0);
       setSelectedMessage(null);
       setFolderStats([]);
+      setMessageListStatus("ready");
     }
     return rows;
   };
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api<Mailbox[]>("/api/mailboxes?stats=1&search="),
-      isAdmin ? api<Domain[]>("/api/domains") : Promise.resolve([]),
-    ]).then(async ([rows, domainRows]) => {
+    if (isAdmin) {
+      void api<Domain[]>("/api/domains").then((domainRows) => {
+        if (!active) return;
+        setDomains(domainRows);
+        setDomainError("");
+      }).catch((caught) => {
+        if (active) setDomainError(`域名列表加载失败：${(caught as Error).message}`);
+      });
+    }
+    void api<Mailbox[]>("/api/mailboxes?stats=1&search=").then(async (rows) => {
       if (!active) return;
       setMailboxes(rows);
-      setDomains(domainRows);
       const requested = initialMailboxId === undefined ? undefined : rows.find((row) => row.id === initialMailboxId);
       if (initialMailboxId !== undefined && !requested) {
         setSelectedMailboxId(initialMailboxId);
@@ -186,6 +200,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         setSelectedMessage(null);
         setMobileStage(initialMessageId ? "detail" : "messages");
         setError("邮箱不存在或已被删除");
+        setMessageListStatus("error");
         appliedRoute.current = `${initialMailboxId}\0${initialFolder}\0${initialMessageId ?? ""}`;
         routeReady.current = true;
         return;
@@ -195,6 +210,8 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         setSelectedMailboxId(next.id);
         await Promise.all([loadMessages(next.id, 0, "", "text", "all", "desc", initialFolder), loadFolderStats(next.id)]);
         if (initialMessageId) await loadMessageDetail(next.id, initialMessageId);
+      } else {
+        setMessageListStatus("ready");
       }
       appliedRoute.current = `${initialMailboxId ?? ""}\0${initialFolder}\0${initialMessageId ?? ""}`;
       routeReady.current = true;
@@ -228,6 +245,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         setSelectedMessage(null);
         setMobileStage(initialMessageId ? "detail" : "messages");
         setError("邮箱不存在或已被删除");
+        setMessageListStatus("error");
         return;
       }
       void (async () => {
@@ -448,6 +466,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
         </form>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
+        {domainError && <div role="status" className="mx-3 mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{domainError}</div>}
         {mailboxes.map((mailbox) => <div key={mailbox.id} className={`group mx-2 mb-1 flex min-h-16 items-center rounded-md border ${mailbox.id === selectedMailboxId ? "border-blue-200 bg-blue-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
           <button onClick={() => void selectMailbox(mailbox)} className="focus-ring min-w-0 flex-1 px-3 py-2.5 text-left">
             <span title={mailbox.address} className={`block truncate text-sm leading-5 ${mailbox.id === selectedMailboxId ? "font-semibold text-blue-800" : "font-medium text-slate-800"}`}>{mailbox.address}</span>
@@ -498,7 +517,9 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
             </button>
           </div>;
         })}
-        {!messages.length && <div className="grid h-72 place-items-center text-sm text-slate-500"><div className="text-center"><MailOpen className="mx-auto mb-2 text-slate-300" size={30} />暂无邮件</div></div>}
+        {messageListStatus === "loading" && !messages.length && <div role="status" className="grid h-72 place-items-center text-sm text-slate-500">正在加载邮件...</div>}
+        {messageListStatus === "error" && !messages.length && <div className="grid h-72 place-items-center text-sm text-slate-500"><div className="text-center"><MailOpen className="mx-auto mb-2 text-slate-300" size={30} />邮件加载失败，请重试</div></div>}
+        {messageListStatus === "ready" && !messages.length && <div className="grid h-72 place-items-center text-sm text-slate-500"><div className="text-center"><MailOpen className="mx-auto mb-2 text-slate-300" size={30} />暂无邮件</div></div>}
       </div>
       {total > PAGE_SIZE && <div className="flex h-12 shrink-0 items-center justify-between border-t border-slate-200 px-4 text-xs text-slate-500"><span>{position + 1}-{Math.min(position + messages.length, total)} / {total}</span><div className="flex gap-1"><button type="button" title="上一页" aria-label="上一页" disabled={position === 0} onClick={() => selectedMailboxId && void loadMessages(selectedMailboxId, Math.max(0, position - PAGE_SIZE))} className="focus-ring grid h-8 w-8 place-items-center rounded-md hover:bg-slate-100 disabled:opacity-30"><ChevronLeft size={16} /></button><button type="button" title="下一页" aria-label="下一页" disabled={position + messages.length >= total} onClick={() => selectedMailboxId && void loadMessages(selectedMailboxId, position + PAGE_SIZE)} className="focus-ring grid h-8 w-8 place-items-center rounded-md hover:bg-slate-100 disabled:opacity-30"><ChevronRight size={16} /></button></div></div>}
     </section>

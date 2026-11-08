@@ -104,6 +104,49 @@ describe("mail workspace", () => {
     await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/mailboxes/7/folders")).toHaveLength(2));
   });
 
+  it("does not show a false empty state while the first message request is pending", async () => {
+    let resolveMessages!: (response: Response) => void;
+    const pendingMessages = new Promise<Response>((resolve) => { resolveMessages = resolve; });
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return pendingMessages;
+      return fetchMock(input, init);
+    }));
+
+    render(<MailWorkspacePage onManage={() => undefined} />);
+    expect(await screen.findByText("正在加载邮件...")).toBeTruthy();
+    expect(screen.queryByText("暂无邮件")).toBeNull();
+
+    resolveMessages(new Response(JSON.stringify({ list: [message], total: 1, position: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
+    expect(await screen.findByText(message.subject)).toBeTruthy();
+    expect(screen.queryByText("正在加载邮件...")).toBeNull();
+  });
+
+  it("loads Inbox messages when the independent administrator domain request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === "/api/domains") return Promise.reject(new Error("domain service unavailable"));
+      return fetchMock(input, init);
+    }));
+
+    render(<MailWorkspacePage isAdmin onManage={() => undefined} />);
+    expect(await screen.findByText(message.subject)).toBeTruthy();
+    expect(screen.getByText("域名列表加载失败：domain service unavailable")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith("/api/mailboxes/7/messages?"))).toBe(true);
+  });
+
+  it("shows a load error instead of an empty mailbox when the message request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return json({ error: "JMAP unavailable" }, 503);
+      return fetchMock(input, init);
+    }));
+
+    render(<MailWorkspacePage onManage={() => undefined} />);
+    expect(await screen.findByText("邮件加载失败，请重试")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("JMAP unavailable");
+    expect(screen.queryByText("暂无邮件")).toBeNull();
+  });
+
   it("sends mailbox and message searches to backend query parameters", async () => {
     const user = userEvent.setup();
     render(<MailWorkspacePage onManage={() => undefined} />);
