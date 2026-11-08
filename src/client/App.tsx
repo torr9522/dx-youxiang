@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Inbox, LogOut, Menu, Settings, ShieldCheck, Users, X } from "lucide-react";
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
 import { api, setCsrf, type SessionIdentity } from "./api";
+import { beginMailReadSession, clearMailReadCache } from "./lib/mail-read-cache";
 import { LoginPage } from "./pages/LoginPage";
 import { MailWorkspacePage } from "./pages/MailWorkspacePage";
 import { MailboxesPage } from "./pages/MailboxesPage";
@@ -69,6 +70,7 @@ export function App() {
     api<SessionIdentity>("/api/auth/session")
       .then((data) => {
         if (!active) return;
+        beginMailReadSession(data.role);
         setCsrf(data.csrfToken);
         setIdentity(data);
         setStatus("ready");
@@ -87,6 +89,7 @@ export function App() {
   }, []);
 
   const finishLogin = (nextIdentity: SessionIdentity) => {
+    beginMailReadSession(nextIdentity.role);
     setCsrf(nextIdentity.csrfToken);
     setIdentity(nextIdentity);
     setStatus("ready");
@@ -94,6 +97,7 @@ export function App() {
 
   const logout = async () => {
     await api("/api/auth/logout", { method: "POST" });
+    clearMailReadCache();
     setCsrf("");
     setIdentity(null);
     setStatus("guest");

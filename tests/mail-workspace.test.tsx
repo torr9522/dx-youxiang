@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { MailWorkspacePage } from "../src/client/pages/MailWorkspacePage";
 import { copyText } from "../src/client/lib/clipboard";
+import { clearMailReadCache } from "../src/client/lib/mail-read-cache";
 
 const mailbox = {
   id: 7,
@@ -57,7 +58,7 @@ describe("mail workspace", () => {
   let mailboxRows = [mailbox];
   const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (url.startsWith("/api/mailboxes?stats=1&search=")) return json(mailboxRows);
+    if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json(mailboxRows);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
     if (/^\/api\/mailboxes\/(?:7|8)\/folders$/.test(url)) return json(folders);
     if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return json({ list: [message], total: 1, position: 0 });
@@ -76,6 +77,7 @@ describe("mail workspace", () => {
   });
 
   beforeEach(() => {
+    clearMailReadCache();
     mailboxRows = [mailbox];
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
@@ -258,21 +260,82 @@ describe("mail workspace", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "写邮件" })).toBeTruthy());
   });
 
-  it("removes a stale compose action when refreshed permissions disable sending", async () => {
+  it("clears the previous mailbox list while a different mailbox is pending", async () => {
+    mailboxRows = [mailbox, disabledMailbox];
+    let resolveMessages!: (response: Response) => void;
+    const pendingMessages = new Promise<Response>((resolve) => { resolveMessages = resolve; });
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("/api/mailboxes/8/messages?") && (!init?.method || init.method === "GET")) return pendingMessages;
+      return fetchMock(input, init);
+    }));
     const user = userEvent.setup();
     render(<MailWorkspacePage isAdmin onManage={() => undefined} />);
-    await screen.findByText(message.subject);
-    expect(screen.getByRole("button", { name: "写邮件" })).toBeTruthy();
+    expect(await screen.findByText(message.subject)).toBeTruthy();
 
-    mailboxRows = [{ ...mailbox, email_send: 0 }];
+    await user.click(within(screen.getByLabelText("邮箱列表")).getByText(disabledMailbox.address));
+    expect(screen.queryByText(message.subject)).toBeNull();
+    expect(screen.getByText("正在加载邮件...")).toBeTruthy();
+    expect(screen.getByText("正在更新...")).toBeTruthy();
+    resolveMessages(new Response(JSON.stringify({ list: [], total: 0, position: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
+    expect(await screen.findByText("暂无邮件")).toBeTruthy();
+  });
+
+  it("refreshes only the current mailbox without reloading mailbox-wide statistics", async () => {
+    const user = userEvent.setup();
+    mailboxRows = [mailbox, { ...disabledMailbox, totalEmails: 12, unreadEmails: 4 }];
+    render(<MailWorkspacePage isAdmin onManage={() => undefined} />);
+    await screen.findByText(message.subject);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === "/api/mailboxes?stats=1&search=")).toBe(true));
+    fetchMock.mockClear();
+
     await user.click(screen.getByRole("button", { name: "刷新邮件" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "写邮件" })).toBeNull());
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith("/api/mailboxes/7/messages?")).length).toBe(1));
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/mailboxes/7/folders")).toHaveLength(1);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith("/api/mailboxes?"))).toBe(false);
+    expect(within(screen.getByLabelText("邮箱列表")).getByText(disabledMailbox.address)).toBeTruthy();
+    expect(within(screen.getByLabelText("邮箱列表")).getByText("12 封")).toBeTruthy();
+  });
+
+  it("does not wait for background administrator statistics before rendering Inbox", async () => {
+    const never = new Promise<Response>(() => undefined);
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/mailboxes?stats=1&search=") return never;
+      return fetchMock(input, init);
+    }));
+
+    render(<MailWorkspacePage isAdmin onManage={() => undefined} />);
+    expect(await screen.findByText(message.subject)).toBeTruthy();
+    expect(screen.queryByText("暂无邮件")).toBeNull();
+  });
+
+  it("shows a pending folder immediately without presenting Inbox rows as Junk", async () => {
+    let resolveJunk!: (response: Response) => void;
+    const pendingJunk = new Promise<Response>((resolve) => { resolveJunk = resolve; });
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("folder=junk") && (!init?.method || init.method === "GET")) return pendingJunk;
+      return fetchMock(input, init);
+    }));
+    const user = userEvent.setup();
+    render(<MailWorkspacePage onManage={() => undefined} />);
+    expect(await screen.findByText(message.subject)).toBeTruthy();
+
+    const junkButton = screen.getByRole("button", { name: /^垃圾邮件/ });
+    await user.click(junkButton);
+    expect(junkButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText(message.subject)).toBeNull();
+    expect(screen.getByText("正在加载邮件...")).toBeTruthy();
+    resolveJunk(new Response(JSON.stringify({ list: [], total: 0, position: 0 }), { status: 200, headers: { "content-type": "application/json" } }));
+    expect(await screen.findByText("暂无邮件")).toBeTruthy();
   });
 
   it("preserves the mailbox-user compose matrix", async () => {
     const { unmount } = render(<MailWorkspacePage isAdmin={false} onManage={() => undefined} />);
     await screen.findByText(message.subject);
     expect(screen.getByRole("button", { name: "写邮件" })).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/mailboxes?stats=1&search=")).toBe(false);
     unmount();
 
     mailboxRows = [disabledMailbox];

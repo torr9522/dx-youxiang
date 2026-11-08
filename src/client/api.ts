@@ -1,3 +1,5 @@
+import { clearMailReadCache } from "./lib/mail-read-cache";
+
 export type Domain = { id: number; name: string; is_default: number; enabled: number; dns_verified_at?: string };
 export type Mailbox = { id: number; address: string; local_part: string; domain: string; note: string; external_login: number; email_send: number; status: string; created_at: string; unreadEmails?: number | null; totalEmails?: number | null };
 export type SessionIdentity = { username: string; role: "admin" | "mailbox_user"; mailboxId: number | null; emailSend: boolean; csrfToken: string };
@@ -36,6 +38,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401) clearMailReadCache();
   if (!response.ok) throw new Error(payload.error ?? `请求失败 (${response.status})`);
   return payload as T;
 }

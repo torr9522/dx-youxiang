@@ -16,7 +16,7 @@ describe("mobile application navigation", () => {
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
-      if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([]);
+      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([]);
       if (url === "/api/audit") return json([]);
@@ -86,7 +86,7 @@ describe("mobile application navigation", () => {
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
-      if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([mailbox]);
+      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([mailbox]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([]);
       if (url.startsWith("/api/mailboxes/7/messages?")) return json({ list: [message], total: 1, position: 0 });
@@ -117,7 +117,7 @@ describe("mobile application navigation", () => {
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
-      if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([{ id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 1 }]);
+      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([{ id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 1 }]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([]);
       if (url.startsWith("/api/mailboxes/7/messages?")) return json({ list: [], total: 1, position: 0 });
@@ -136,7 +136,7 @@ describe("mobile application navigation", () => {
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
-      if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([mailbox]);
+      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([mailbox]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([{ role: "junk", id: "junk-id", name: "Junk Mail", totalEmails: 1, unreadEmails: 1 }]);
       if (url.startsWith("/api/mailboxes/7/messages?") && url.includes("folder=junk")) return json({ list: [message], total: 1, position: 0 });
@@ -163,7 +163,7 @@ describe("mobile application navigation", () => {
       if (url === "/api/auth/session") return authenticated ? json({ csrfToken: "test-csrf" }) : Promise.resolve(new Response(JSON.stringify({ error: "需要管理员登录" }), { status: 401, headers: { "content-type": "application/json" } }));
       if (url === "/api/auth/login" && init?.method === "POST") { authenticated = true; return json({ csrfToken: "test-csrf" }); }
       if (url === "/api/settings/translation") return json({ protocol: null, baseUrl: "", hasApiKey: false, model: "", targetLanguage: "zh-CN", enabled: false, configured: false, tested: false, cacheEntries: 0 });
-      if (url.startsWith("/api/mailboxes?stats=1&search=")) return json([]);
+      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([]);
       if (url === "/api/domains") return json([]);
       throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
     }));
