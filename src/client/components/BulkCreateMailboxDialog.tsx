@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { api, type Domain } from "../api";
+import { api, type Domain, type MailboxGroup } from "../api";
 import { Modal } from "./Modal";
 
 const BULK_LIMIT = 100;
@@ -15,8 +15,9 @@ type BulkResult = {
   results: { address: string; status: string; reason?: string }[];
 };
 
-export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domains: Domain[]; onClose: () => void; onChanged: () => void }) {
+export function BulkCreateMailboxDialog({ domains, groups, initialGroupId, onClose, onChanged }: { domains: Domain[]; groups: MailboxGroup[]; initialGroupId?: number; onClose: () => void; onChanged: () => void }) {
   const defaultDomain = domains.find((domain) => domain.enabled && domain.is_default);
+  const defaultGroup = groups.find((group) => group.id === initialGroupId) ?? groups.find((group) => group.is_system_default) ?? groups[0];
   const [mode, setMode] = useState<Mode>("range");
   const [start, setStart] = useState("1");
   const [end, setEnd] = useState("10");
@@ -25,6 +26,7 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<BulkResult | null>(null);
+  const [groupId, setGroupId] = useState(defaultGroup?.id ?? 0);
 
   const range = useMemo(() => {
     if (!/^\d+$/.test(start) || !/^\d+$/.test(end)) return { values: [] as string[], error: "起始编号和结束编号必须是非负整数" };
@@ -37,7 +39,7 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
   }, [start, end]);
   const manualValues = rows.map((row) => row.value.trim()).filter(Boolean);
   const values = mode === "range" ? range.values : manualValues;
-  const validationError = !defaultDomain ? "默认邮箱域名未配置或未启用" : mode === "range" ? range.error : manualValues.length === 0 ? "至少输入一个邮箱前缀" : manualValues.length > BULK_LIMIT ? `每次最多创建 ${BULK_LIMIT} 个邮箱` : "";
+  const validationError = !defaultDomain ? "默认邮箱域名未配置或未启用" : !groupId ? "请选择所属分组" : mode === "range" ? range.error : manualValues.length === 0 ? "至少输入一个邮箱前缀" : manualValues.length > BULK_LIMIT ? `每次最多创建 ${BULK_LIMIT} 个邮箱` : "";
   const preview = values.slice(0, 8).map((value) => `${value.toLowerCase()}@${defaultDomain?.name ?? ""}`);
 
   const submit = async (event: React.FormEvent) => {
@@ -45,7 +47,7 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
     if (validationError) return;
     setBusy(true); setError(""); setResult(null);
     try {
-      const response = await api<BulkResult>("/api/mailboxes/bulk", { method: "POST", body: JSON.stringify({ localParts: values }) });
+      const response = await api<BulkResult>("/api/mailboxes/bulk", { method: "POST", body: JSON.stringify({ localParts: values, groupId }) });
       setResult(response);
       if (response.succeeded > 0) onChanged();
     } catch (caught) {
@@ -72,6 +74,13 @@ export function BulkCreateMailboxDialog({ domains, onClose, onChanged }: { domai
         </div>)}
         <button type="button" disabled={rows.length >= BULK_LIMIT} onClick={() => setRows((current) => [...current, { id: nextId.current++, value: "" }])} className="btn-secondary focus-ring h-10 gap-2 px-3 text-sm"><Plus size={16} />添加一行</button>
       </div>}
+
+      <label className="mt-4 block text-sm font-medium text-slate-700">所属分组
+        <select required value={groupId} onChange={(event) => setGroupId(Number(event.target.value))} className="form-control mt-1.5 h-11 w-full px-3">
+          <option value={0}>选择分组</option>
+          {groups.map((group) => <option value={group.id} key={group.id}>{group.name}{group.is_system_default ? "（默认）" : ""}</option>)}
+        </select>
+      </label>
 
       <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
         <div className="flex justify-between text-slate-600"><span>默认域名 @{defaultDomain?.name ?? "未配置"}</span><span>预计 {values.length} 个 / 上限 {BULK_LIMIT}</span></div>

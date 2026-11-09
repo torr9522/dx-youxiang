@@ -12,6 +12,7 @@ const mailbox = {
   address: "alpha@example.test",
   local_part: "alpha",
   domain: "example.test",
+  group_id: 1,
   note: "",
   external_login: 0,
   email_send: 1,
@@ -20,6 +21,8 @@ const mailbox = {
   unreadEmails: 1,
   totalEmails: 1,
 };
+
+const group = { id: 1, name: "dx", sort_order: 0, is_system_default: 1, mailbox_count: 2, created_at: "2026-01-01", updated_at: "2026-01-01" };
 
 const disabledMailbox = {
   ...mailbox,
@@ -59,6 +62,7 @@ describe("mail workspace", () => {
   const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json(mailboxRows);
+    if (url === "/api/mailbox-groups") return json([group]);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
     if (/^\/api\/mailboxes\/(?:7|8)\/folders$/.test(url)) return json(folders);
     if (url.startsWith("/api/mailboxes/7/messages?") && (!init?.method || init.method === "GET")) return json({ list: [message], total: 1, position: 0 });
@@ -66,7 +70,7 @@ describe("mail workspace", () => {
     if (url === "/api/mailboxes/7/messages/m1" && (!init?.method || init.method === "GET")) return json({ ...message, plain: "Your code is 482731", html: '<p>Your code is 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', blockedRemoteImages: true, verificationCode: "482731", attachments: [{ blobId: "b1", name: "notice.txt", size: 12 }], translation: { language: "eng", label: "英文", translatable: true, configured: true, enabled: true, targetLanguage: "zh-CN" } });
     if (url === "/api/mailboxes/7/messages/m1/translate" && init?.method === "POST") return json({ html: '<p>您的验证码是 482731</p><img data-remote-src="/api/proxy/image-token" alt="Remote logo">', plain: "", cached: false, partial: false });
     if (url === "/api/mailboxes/7/messages/m1/read" && init?.method === "PATCH") return Promise.resolve(new Response(null, { status: 204 }));
-    if (url === "/api/mailboxes" && init?.method === "POST") return json({ id: 8, address: "created@example.test", external_login: 0 }, 201);
+    if (url === "/api/mailboxes" && init?.method === "POST") return json({ id: 8, address: "created@example.test", external_login: 0, group_id: 1 }, 201);
     if (url === "/api/mailboxes/7/drafts" && init?.method === "POST") return json({ emailId: "draft-1", status: "draft" }, 201);
     if (url === "/api/mailboxes/7/submissions" && init?.method === "POST") return json({ emailId: "sent-1", submissionId: "submission-1", status: "queued" }, 202);
     if (url === "/api/mailboxes/7/messages/actions" && init?.method === "POST") {
@@ -222,7 +226,7 @@ describe("mail workspace", () => {
     expect(within(dialog).getByText("created@example.test")).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "创建邮箱" }));
 
-    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/mailboxes" && init?.method === "POST" && init.body === JSON.stringify({ localPart: "created", domainId: 2, note: "" }))).toBe(true));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/mailboxes" && init?.method === "POST" && init.body === JSON.stringify({ localPart: "created", domainId: 2, note: "", groupId: 1 }))).toBe(true));
   });
 
   it("shows the compose workflow to an admin when the selected mailbox can send", async () => {

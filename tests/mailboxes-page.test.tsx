@@ -10,13 +10,16 @@ const mailbox = {
   address: "alpha@example.test",
   local_part: "alpha",
   domain: "example.test",
+  group_id: 1,
   note: "",
   external_login: 0,
+  email_send: 0,
   status: "active",
   created_at: "2026-01-01 00:00:00",
   unreadEmails: 1,
   totalEmails: 2,
 };
+const group = { id: 1, name: "dx", sort_order: 0, is_system_default: 1, mailbox_count: 2, created_at: "2026-01-01", updated_at: "2026-01-01" };
 const secondMailbox = { ...mailbox, id: 8, address: "beta@example.test", local_part: "beta", unreadEmails: 0, totalEmails: 0 };
 
 function json(data: unknown, status = 200) {
@@ -27,6 +30,7 @@ describe("mailbox management", () => {
   const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("/api/mailboxes?stats=1")) return json([mailbox, secondMailbox]);
+    if (url === "/api/mailbox-groups") return json([group]);
     if (url === "/api/domains") return json([{ id: 2, name: "example.test", is_default: 1, enabled: 1 }]);
     if (url === "/api/mailboxes/7/external-login" && init?.method === "PATCH") return Promise.resolve(new Response(null, { status: 204 }));
     if (url === "/api/mailboxes/7/password" && init?.method === "POST") return Promise.resolve(new Response(null, { status: 204 }));
@@ -115,7 +119,7 @@ describe("mailbox management", () => {
     await user.click(within(dialog).getByRole("button", { name: "开始创建" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/mailboxes/bulk",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ localParts: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"] }) }),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ localParts: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], groupId: 1 }) }),
     ));
     expect(await within(dialog).findByText("成功 10，已存在跳过 0，本批重复 0，失败 0")).toBeTruthy();
 
@@ -152,7 +156,7 @@ describe("mailbox management", () => {
     await user.click(within(dialog).getByRole("button", { name: "开始创建" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/mailboxes/bulk",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ localParts: ["first", "last"] }) }),
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ localParts: ["first", "last"], groupId: 1 }) }),
     ));
   });
 

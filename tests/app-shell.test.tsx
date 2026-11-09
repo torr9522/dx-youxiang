@@ -10,6 +10,8 @@ function json(data: unknown) {
   return Promise.resolve(new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } }));
 }
 
+const mailboxGroup = { id: 1, name: "dx", sort_order: 0, is_system_default: 1, mailbox_count: 1, created_at: "2026-01-01", updated_at: "2026-01-01" };
+
 describe("mobile application navigation", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
@@ -17,6 +19,7 @@ describe("mobile application navigation", () => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([]);
+      if (url === "/api/mailbox-groups") return json([mailboxGroup]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([]);
       if (url === "/api/audit") return json([]);
@@ -81,12 +84,13 @@ describe("mobile application navigation", () => {
   });
 
   it("routes mailbox and message selections through browser back and forward", async () => {
-    const mailbox = { id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 1, totalEmails: 1 };
+    const mailbox = { id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", group_id: 1, note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 1, totalEmails: 1 };
     const message = { id: "m1", receivedAt: "2026-01-02T03:04:05Z", from: [{ email: "sender@example.test" }], to: [{ email: mailbox.address }], subject: "Route test message", keywords: { "$seen": true }, hasAttachment: false, preview: "Route body" };
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([mailbox]);
+      if (url === "/api/mailbox-groups") return json([mailboxGroup]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([]);
       if (url.startsWith("/api/mailboxes/7/messages?")) return json({ list: [message], total: 1, position: 0 });
@@ -117,7 +121,8 @@ describe("mobile application navigation", () => {
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
-      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([{ id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 1 }]);
+      if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([{ id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", group_id: 1, note: "", external_login: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 1 }]);
+      if (url === "/api/mailbox-groups") return json([mailboxGroup]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([]);
       if (url.startsWith("/api/mailboxes/7/messages?")) return json({ list: [], total: 1, position: 0 });
@@ -131,12 +136,13 @@ describe("mobile application navigation", () => {
 
   it("loads Junk directly and preserves its folder context in message URLs", async () => {
     window.history.replaceState({}, "", "/inbox/7/junk");
-    const mailbox = { id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", note: "", external_login: 0, email_send: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 0 };
+    const mailbox = { id: 7, address: "alpha@example.test", local_part: "alpha", domain: "example.test", group_id: 1, note: "", external_login: 0, email_send: 0, status: "active", created_at: "2026-01-01", unreadEmails: 0, totalEmails: 0 };
     const message = { id: "spam-1", receivedAt: "2026-01-02T03:04:05Z", from: [{ email: "sender@example.test" }], to: [{ email: mailbox.address }], subject: "Junk route message", keywords: { "$junk": true }, hasAttachment: false, preview: "Junk body" };
     vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url === "/api/auth/session") return json({ csrfToken: "test-csrf" });
       if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([mailbox]);
+      if (url === "/api/mailbox-groups") return json([mailboxGroup]);
       if (url === "/api/domains") return json([]);
       if (url === "/api/mailboxes/7/folders") return json([{ role: "junk", id: "junk-id", name: "Junk Mail", totalEmails: 1, unreadEmails: 1 }]);
       if (url.startsWith("/api/mailboxes/7/messages?") && url.includes("folder=junk")) return json({ list: [message], total: 1, position: 0 });
@@ -164,6 +170,7 @@ describe("mobile application navigation", () => {
       if (url === "/api/auth/login" && init?.method === "POST") { authenticated = true; return json({ csrfToken: "test-csrf" }); }
       if (url === "/api/settings/translation") return json({ protocol: null, baseUrl: "", hasApiKey: false, model: "", targetLanguage: "zh-CN", enabled: false, configured: false, tested: false, cacheEntries: 0 });
       if (/^\/api\/mailboxes\?stats=[01]&search=/.test(url)) return json([]);
+      if (url === "/api/mailbox-groups") return json([mailboxGroup]);
       if (url === "/api/domains") return json([]);
       throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
     }));

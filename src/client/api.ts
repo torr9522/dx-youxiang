@@ -1,7 +1,8 @@
 import { clearMailReadCache } from "./lib/mail-read-cache";
 
 export type Domain = { id: number; name: string; is_default: number; enabled: number; dns_verified_at?: string };
-export type Mailbox = { id: number; address: string; local_part: string; domain: string; note: string; external_login: number; email_send: number; status: string; created_at: string; unreadEmails?: number | null; totalEmails?: number | null };
+export type Mailbox = { id: number; address: string; local_part: string; domain: string; group_id: number; note: string; external_login: number; email_send: number; status: string; created_at: string; unreadEmails?: number | null; totalEmails?: number | null };
+export type MailboxGroup = { id: number; name: string; sort_order: number; is_system_default: number; mailbox_count: number; created_at: string; updated_at: string };
 export type SessionIdentity = { username: string; role: "admin" | "mailbox_user"; mailboxId: number | null; emailSend: boolean; csrfToken: string };
 export type MessageSummary = { id: string; receivedAt: string; from?: { name?: string; email: string }[]; to?: { name?: string; email: string }[]; subject?: string; keywords?: Record<string, boolean>; hasAttachment: boolean; preview?: string; size?: number };
 export type MailFolderRole = "inbox" | "sent" | "drafts" | "junk" | "trash";

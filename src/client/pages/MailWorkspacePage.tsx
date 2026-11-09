@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Copy, Download, FileText, Forward, ImageIcon, Inbox, Languages, ListFilter, Mail, MailOpen, MailPlus, Paperclip, RefreshCw, Reply, ReplyAll, Search, Settings2, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
-import { api, type Domain, type Mailbox, type MailFolder, type MessageAction, type MessageActionResult, type MessageDetail, type MessageSummary } from "../api";
+import { api, type Domain, type Mailbox, type MailboxGroup, type MailFolder, type MessageAction, type MessageActionResult, type MessageDetail, type MessageSummary } from "../api";
 import { CreateMailboxDialog } from "../components/CreateMailboxDialog";
 import { ComposeDialog } from "../components/ComposeDialog";
+import { MailboxGroupsSidebar } from "../components/MailboxGroupsSidebar";
 import { Modal } from "../components/Modal";
 import { copyText } from "../lib/clipboard";
 import { fetchMailRead, getMailReadCache, invalidateMailboxReadCache, mailReadKey } from "../lib/mail-read-cache";
@@ -39,6 +40,7 @@ type MailWorkspaceProps = {
 export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMessageId, initialFolder = "inbox", onMailboxRoute, onFolderRoute, onMessageRoute, onMessageListRoute, onInboxRoute, onManage, onSettings }: MailWorkspaceProps) {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
+  const [groups, setGroups] = useState<MailboxGroup[]>([]);
   const [mailboxSearch, setMailboxSearch] = useState("");
   const [selectedMailboxId, setSelectedMailboxId] = useState<number | null>(initialMailboxId ?? null);
   const [messages, setMessages] = useState<MessageSummary[]>([]);
@@ -58,6 +60,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
   const [total, setTotal] = useState(0);
   const [mobileStage, setMobileStage] = useState<MobileStage>(initialMessageId ? "detail" : initialMailboxId ? "messages" : "mailboxes");
   const [createOpen, setCreateOpen] = useState(false);
+  const [createGroupId, setCreateGroupId] = useState<number | undefined>();
   const [composeMode, setComposeMode] = useState<ComposeMode | null>(null);
   const [clientInfoOpen, setClientInfoOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -231,9 +234,37 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
     return rows;
   };
 
+  const refreshMailboxOrganization = async (search = mailboxSearch, preferredId = selectedMailboxId) => {
+    const [rows, groupRows] = await Promise.all([
+      api<Mailbox[]>(`/api/mailboxes?stats=0&search=${encodeURIComponent(search)}`),
+      api<MailboxGroup[]>("/api/mailbox-groups"),
+    ]);
+    setGroups(groupRows);
+    setMailboxes((current) => rows.map((row) => {
+      const existing = current.find((candidate) => candidate.id === row.id);
+      return existing ? { ...row, totalEmails: existing.totalEmails, unreadEmails: existing.unreadEmails } : row;
+    }));
+    const next = rows.find((row) => row.id === preferredId) ?? rows[0] ?? null;
+    if (next && next.id !== selectedMailboxId) {
+      if (selectedMailboxId && !rows.some((row) => row.id === selectedMailboxId)) invalidateMailboxReadCache(selectedMailboxId);
+      setSelectedMailboxId(next.id);
+      await Promise.all([loadMessages(next.id, 0, "", "text", "all", "desc", "inbox"), loadFolderStats(next.id)]);
+    } else if (!next) {
+      if (selectedMailboxId) invalidateMailboxReadCache(selectedMailboxId);
+      setSelectedMailboxId(null);
+      setMessages([]); setTotal(0); setSelectedMessage(null); setFolderStats([]); setMessageListStatus("ready");
+    }
+    return rows;
+  };
+
   useEffect(() => {
     let active = true;
     if (isAdmin) {
+      void api<MailboxGroup[]>("/api/mailbox-groups").then((rows) => {
+        if (active) setGroups(rows);
+      }).catch((caught) => {
+        if (active) setError(`邮箱分组加载失败：${(caught as Error).message}`);
+      });
       void api<Domain[]>("/api/domains").then((domainRows) => {
         if (!active) return;
         setDomains(domainRows);
@@ -523,7 +554,7 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       <div className="border-b border-slate-200 px-3 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2 px-1">
           <div><h1 className="text-sm font-semibold text-slate-900">邮箱</h1><p className="mt-0.5 text-xs text-slate-500">{mailboxes.length} 个账户</p></div>
-          {isAdmin && <button onClick={() => setCreateOpen(true)} title="创建邮箱" aria-label="创建邮箱" className="focus-ring grid h-9 w-9 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={17} /></button>}
+          {isAdmin && <button onClick={() => { setCreateGroupId(groups.find((group) => group.is_system_default)?.id); setCreateOpen(true); }} title="创建邮箱" aria-label="创建邮箱" className="focus-ring grid h-9 w-9 place-items-center rounded-md bg-blue-600 text-white hover:bg-blue-700"><MailPlus size={17} /></button>}
         </div>
         <form className="relative mt-3" onSubmit={(event) => { event.preventDefault(); void loadMailboxes(mailboxSearch); }}>
           <Search className="pointer-events-none absolute left-3 top-2.5 text-slate-400" size={16} />
@@ -531,17 +562,25 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
           <button title="执行邮箱搜索" aria-label="执行邮箱搜索" className="focus-ring absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-blue-700"><ChevronRight size={15} /></button>
         </form>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-2">
-        {domainError && <div role="status" className="mx-3 mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{domainError}</div>}
-        {mailboxes.map((mailbox) => <div key={mailbox.id} className={`group mx-2 mb-1 flex min-h-16 items-center rounded-md border ${mailbox.id === (pendingMailboxId ?? selectedMailboxId) ? "border-blue-200 bg-blue-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
-          <button onClick={() => void selectMailbox(mailbox)} className="focus-ring min-w-0 flex-1 px-3 py-2.5 text-left">
-            <span title={mailbox.address} className={`block truncate text-sm leading-5 ${mailbox.id === (pendingMailboxId ?? selectedMailboxId) ? "font-semibold text-blue-800" : "font-medium text-slate-800"}`}>{mailbox.address}</span>
-            <span className="mt-1 flex items-center gap-2 text-xs text-slate-500"><span>{mailbox.totalEmails ?? "-"} 封</span>{Boolean(mailbox.unreadEmails) && <span className="rounded-full bg-blue-600 px-1.5 py-0.5 font-medium text-white">{mailbox.unreadEmails} 未读</span>}</span>
-          </button>
-          <button title="复制邮箱地址" aria-label={`复制 ${mailbox.address}`} onClick={async () => { try { await copyText(mailbox.address); showToast("已复制"); } catch (caught) { showToast((caught as Error).message); } }} className="focus-ring mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-white hover:text-blue-700"><Copy size={15} /></button>
-        </div>)}
-        {!mailboxes.length && <div className="px-5 py-14 text-center text-sm text-slate-500"><Inbox className="mx-auto mb-2 text-slate-300" size={28} />没有匹配的邮箱</div>}
-      </div>
+      {domainError && <div role="status" className="mx-3 mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{domainError}</div>}
+      {isAdmin ? groups.length > 0
+        ? <MailboxGroupsSidebar
+          groups={groups}
+          mailboxes={mailboxes}
+          selectedMailboxId={selectedMailboxId}
+          pendingMailboxId={pendingMailboxId}
+          onSelectMailbox={(mailbox) => void selectMailbox(mailbox)}
+          onCopyMailbox={(address) => { void copyText(address).then(() => showToast("已复制")).catch((caught) => showToast((caught as Error).message)); }}
+          onCreateMailbox={(groupId) => { setCreateGroupId(groupId); setCreateOpen(true); }}
+          onChanged={async () => { await refreshMailboxOrganization(); }}
+        />
+        : <div className="min-h-0 flex-1 px-5 py-14 text-center text-sm text-slate-500">正在加载分组...</div>
+        : <div className="min-h-0 flex-1 overflow-y-auto py-2">
+          {mailboxes.map((mailbox) => <div key={mailbox.id} className={`group mx-2 mb-1 flex min-h-16 items-center rounded-md border ${mailbox.id === (pendingMailboxId ?? selectedMailboxId) ? "border-blue-200 bg-blue-50" : "border-transparent hover:border-slate-200 hover:bg-white"}`}>
+            <button onClick={() => void selectMailbox(mailbox)} className="focus-ring min-w-0 flex-1 px-3 py-2.5 text-left"><span title={mailbox.address} className="block truncate text-sm font-medium text-slate-800">{mailbox.address}</span><span className="mt-1 block text-xs text-slate-500">{mailbox.totalEmails ?? "-"} 封</span></button>
+          </div>)}
+          {!mailboxes.length && <div className="px-5 py-14 text-center text-sm text-slate-500"><Inbox className="mx-auto mb-2 text-slate-300" size={28} />没有匹配的邮箱</div>}
+        </div>}
       {isAdmin ? <div className="border-t border-slate-200 p-3"><button onClick={onManage} className="focus-ring flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm text-slate-600 hover:bg-white hover:text-blue-700"><Settings2 size={16} />邮箱管理</button></div> : <div className="border-t border-slate-200 p-3"><button onClick={() => setClientInfoOpen(true)} className="focus-ring flex h-10 w-full items-center justify-center gap-2 rounded-md text-sm text-slate-600 hover:bg-white hover:text-blue-700"><Settings2 size={16} />邮件客户端设置</button></div>}
     </section>
 
@@ -637,11 +676,11 @@ export function MailWorkspacePage({ isAdmin = true, initialMailboxId, initialMes
       </>}
     </article>
 
-    {createOpen && <CreateMailboxDialog domains={domains} onClose={() => setCreateOpen(false)} onCreated={async (created) => {
+    {createOpen && <CreateMailboxDialog domains={domains} groups={groups} initialGroupId={createGroupId} onClose={() => setCreateOpen(false)} onCreated={async (created) => {
       setCreateOpen(false);
       setMailboxSearch("");
       setMobileStage("messages");
-      await loadMailboxes("", created.id);
+      await refreshMailboxOrganization("", created.id);
       appliedRoute.current = `${created.id}\0inbox\0`;
       onMailboxRoute?.(created.id);
       showToast("邮箱已创建");
