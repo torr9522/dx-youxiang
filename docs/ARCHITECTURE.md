@@ -10,7 +10,7 @@ Browser       -> Caddy :443 -> Dx 邮箱 :loopback-selected -> JMAP :8080 -> Sta
                                       |-> SQLite WAL
 ```
 
-Stalwart owns protocol handling, credentials, accounts, mailboxes, messages, drafts, submissions and attachments. Dx 邮箱 owns administrator and mailbox-user sessions, mailbox notes and permission mirrors, domain selection, audit records, and the mapping from its numeric mailbox ID to the immutable Stalwart account ID.
+Stalwart owns protocol handling, credentials, accounts, mailboxes, messages, drafts, submissions and attachments. Dx 邮箱 owns administrator and mailbox-user sessions, mailbox notes and permission mirrors, domain selection, audit records, single-level administrator mailbox groups, and the mapping from its numeric mailbox ID to the immutable Stalwart account ID. A group changes only SQLite organization metadata; it is never a Stalwart mailbox or JMAP folder.
 
 The installer selects the first free loopback application port from 3000, 3001, 3100, and 3101. Stalwart JMAP stays on `127.0.0.1:8080`. Caddy is the only public HTTP service.
 
@@ -49,6 +49,8 @@ The client uses React Router with browser history for `/inbox`, `/inbox/:mailbox
 Webmail read data uses a bounded process-memory LRU in the browser. Its opaque scope is regenerated after session restore or login and includes the authenticated role; every key also includes the numeric application mailbox ID, folder, query/read/order filters and pagination or the message ID. The browser still never receives a Stalwart account ID. A verified cached value can render immediately while the same exact read is revalidated, and concurrent identical reads share one request. Logout, 401 and session replacement clear the whole cache; mailbox mutations invalidate that mailbox. Nothing is written to localStorage, sessionStorage, Cache Storage or SQLite.
 
 Administrator Inbox initialization first fetches the lightweight SQLite mailbox mapping, then loads the selected list and folder state in parallel. Global mailbox statistics and domain metadata are independent background reads and cannot turn a successful Inbox into an empty or failed state. Manual refresh bypasses cached values only for the selected list and folder state; it does not put all-mailbox statistics on the interaction's critical path.
+
+Mailbox group metadata is another lightweight, administrator-only SQLite read and is independent of the selected Inbox request. The system-default group has an immutable database identity and sort position zero even after rename. Ordinary groups have persisted positive positions. Existing and legacy-created mailbox rows are assigned to the stable default group by an additive migration trigger, preserving rollback compatibility with v0.1.8 application code.
 
 The application server returns the SPA entry point only for this explicit route allowlist; health, API, mail-resource and unknown static paths retain their own status and content type. Route identifiers are navigation hints only. Every mailbox, message, image and attachment request remains authorized by the server-side SQLite mailbox-to-Stalwart-account mapping. Desktop routing retains the three-column workspace, while mobile routes select the mailbox, list, or detail stage without creating a second navigation model.
 

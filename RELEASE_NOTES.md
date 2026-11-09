@@ -1,29 +1,35 @@
-# Dx Youxiang v0.1.8
+# Dx Youxiang v0.1.9
 
-This stable release preserves the verified first-load state fix and improves the responsiveness of the existing React, Express, SQLite and Stalwart/JMAP architecture. It does not replace a framework or change mail storage.
+This stable release adds mailbox-address groups to the existing React, Express, SQLite and Stalwart/JMAP application. It keeps the three-column webmail, mail storage, account model, session system and v0.1.8 read-performance work unchanged.
 
-## Webmail performance
+## Mailbox groups
 
-- Load the lightweight mailbox mapping before all-mailbox statistics, so the selected administrator Inbox and folders initialize without that global JMAP barrier.
-- Keep domain metadata independent from Inbox initialization and retain distinct loading, ready, error and genuinely empty states.
-- Refresh only the selected mailbox's current message page and folder state. The observed request shape changes from three browser APIs and six JMAP HTTP requests to two browser APIs and three JMAP HTTP requests.
-- Highlight requested folders and mailboxes immediately. Without a matching verified cache the old list is removed before the target label changes; with a matching cache it renders while revalidation continues.
-- Reuse verified lists, folder state and read message details from a 96-entry in-memory LRU with exact request deduplication, 10-second freshness and a five-minute maximum stale window.
+- Create and rename single-level groups, collapse or expand their mailbox rows, and persist ordinary-group order with drag, move-up and move-down controls.
+- Keep one stable system-default group fixed first. Its initial name is `dx`; administrators may rename it, but cannot delete, demote or move it.
+- Select a group for single mailbox creation, numeric ranges and custom-line batches. Existing duplicate addresses remain skipped and are never moved implicitly.
+- Move an existing mailbox between groups without recreating its Stalwart account or changing its address, credentials, permissions, mail, folders or attachments.
 
-## Isolation and consistency
+## Safe deletion
 
-- Cache scope includes a regenerated session generation, authenticated role, numeric application mailbox ID, folder, filters and pagination or message ID. Stalwart account IDs remain server-only.
-- Logout, 401 and session replacement clear all cached mail. Mail mutations invalidate the affected mailbox, and old in-flight reads cannot repopulate invalidated entries.
-- Cache values never enter localStorage, sessionStorage, URLs, SQLite or a shared server cache. API authorization and mailbox-to-account resolution are unchanged.
-- The first-load fix from `a834562589bd83a60c05faafaf4892a9a1d88d57` is included.
+- Delete a group while transactionally moving all members to a selected group.
+- Delete a group while transactionally moving all members to the stable default group, including after that group is renamed.
+- Delete a group and its mailboxes only after a fresh member snapshot and typed `DELETE <count>` confirmation. Each account uses the existing Stalwart-plus-SQLite deletion flow; processing stops at the first failure and reports deleted, failed and remaining accounts without hiding the group.
 
-## Compatibility and rollback
+## Migration and rollback
 
-- No SQLite migration, persistent cache table or Stalwart data-format/configuration change is required.
-- Stalwart remains `1.0.1`; the installer runtime, Caddy integration, DNS, PTR, SPF, DKIM, DMARC, firewall and mailbox permission model are unchanged.
-- Application rollback uses the retained previous release symlink. Browser-memory cache state disappears naturally on reload or rollback.
+- Startup adds one `mailbox_groups` table and the `mailboxes.group_id` foreign key, creates `dx` only when no stable default exists, and assigns all existing rows transactionally.
+- Repeated startup is idempotent. Mailbox IDs, Stalwart account IDs, addresses, permissions, messages, MIME, flags, folders and attachments are not modified.
+- The schema is additive and v0.1.8-compatible. A retained v0.1.8 application can ignore group metadata, while triggers assign its legacy mailbox inserts to the stable default group.
+- Stalwart remains `1.0.1`; DNS, PTR, SPF, DKIM, DMARC, Caddy ownership, firewall policy and the global Node.js installation are unchanged.
+
+## Performance and isolation
+
+- Group metadata is a lightweight administrator-only SQLite request and does not block selected-Inbox initialization or join manual refresh.
+- Group rename, reorder and mailbox movement do not refetch JMAP mail or invalidate unrelated message bodies.
+- The v0.1.8 96-entry in-memory LRU, 10-second freshness, five-minute stale window, SWR, exact request deduplication and session/account isolation remain in place.
+- Accounts actually deleted by a group operation have only their own browser-memory cache entries invalidated.
 
 ## Validation
 
-- Automated coverage includes first-load states, administrator-statistics independence, ordinary-user initialization, current-mailbox refresh, pending feedback, stale-display prevention, cache isolation/capacity/deduplication/invalidation and 401 cleanup.
-- Real test-server performance, backup/restore, browser, mail-integrity and production-upgrade results are accepted separately and are never inferred from unit tests.
+- Automated coverage includes v0.1.8 backfill, migration idempotence, default protection, CRUD, sorting, group-aware single/batch creation, mailbox movement, authorization, all deletion modes, stale snapshots, upstream partial failure, SQLite rollback and cache invalidation.
+- Real test-server backup/restore, destructive isolated-account checks, browser acceptance, release verification and production non-destructive acceptance are separate release gates and are never inferred from unit tests.

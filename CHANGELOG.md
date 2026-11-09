@@ -4,6 +4,32 @@ All notable changes follow Keep a Changelog. The project uses Semantic Versionin
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-11-09
+
+### Added
+
+- Add administrator mailbox groups to the existing three-column workspace, including create, rename, collapse, member counts, drag sorting and accessible move-up/move-down controls.
+- Add group selection to single, numeric-range and custom-line mailbox creation, plus mailbox movement from the sidebar and mailbox-management page.
+- Add three explicit group deletion modes: complete mailbox-account deletion, transactional migration to a selected group, or transactional migration to the stable system-default group.
+
+### Data integrity
+
+- Add an idempotent SQLite migration that creates exactly one stable system-default group named `dx` and assigns every existing mailbox without changing mailbox IDs, Stalwart account IDs, permissions or mail data.
+- Protect the system-default identity and first position in both SQLite and the API. Renaming is allowed; deletion, demotion and reordering are rejected independently of the displayed name.
+- Reuse the existing staged Stalwart account-deletion flow for destructive group deletion, require a typed member-count confirmation and a fresh membership snapshot, stop on the first failure, and retain the group with an explicit retryable remainder.
+- Keep group-to-group migration inside one SQLite transaction, with foreign keys and rollback on any member or group update failure.
+
+### Performance and security
+
+- Keep group metadata as a lightweight administrator-only SQLite request independent of Inbox initialization; group rename, sort and mailbox movement do not refetch JMAP mail or invalidate unrelated message bodies.
+- Preserve the v0.1.8 96-entry memory LRU, SWR, request deduplication and session/account isolation. Moving a mailbox preserves its cache scope, while accounts actually deleted through a group operation are invalidated precisely.
+- Reject ordinary-user group reads and mutations and continue resolving all mail operations from the server-side numeric mailbox mapping.
+
+### Validation
+
+- Cover v0.1.8 schema backfill, repeated migration, default-group rename/protection, CRUD, reorder validation, ordinary-user denial, grouped creation, movement, all deletion modes, stale snapshots, partial Stalwart failure and forced SQLite transaction rollback.
+- Cover grouped sidebar collapse, default-group UI protection, drag and button sorting, create-in-group defaults, mailbox movement, typed destructive confirmation and deleted-account cache invalidation.
+
 ## [0.1.8] - 2026-11-08
 
 ### Fixed
