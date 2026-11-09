@@ -1,4 +1,4 @@
-import { X509Certificate } from "node:crypto";
+import { createHash, X509Certificate } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
@@ -20,6 +20,7 @@ const localPart = z.string().min(1).max(64).regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]
 const mailboxPassword = z.string().min(6, "密码至少需要 6 个字符").max(256);
 const loginIdentifier = z.string().trim().min(1).max(254);
 const bulkMailboxLimit = 100;
+const mailboxGroupName = z.string().trim().min(1, "分组名称不能为空").max(40, "分组名称最多 40 个字符");
 const routeId = z.string().regex(/^[1-9][0-9]*$/, "ID 必须为正整数").transform(Number)
   .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
 const spaRoute = /^\/(?:login|inbox(?:\/[1-9][0-9]*(?:\/(?:junk(?:\/[^/]+)?|[^/]+))?)?|mailboxes|settings(?:\/(?:domains|audit|translation))?|domains|audit)?\/?$/;
@@ -146,7 +147,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     res.status(204).end();
   });
 
-  app.use(["/api/settings", "/api/domains", "/api/dashboard", "/api/audit"], auth.requireAdmin);
+  app.use(["/api/settings", "/api/domains", "/api/dashboard", "/api/audit", "/api/mailbox-groups"], auth.requireAdmin);
 
   const translationSettingsSchema = z.object({
     protocol: z.enum(["responses", "chat_completions"]).nullable(),
@@ -223,13 +224,141 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     res.status(204).end();
   });
 
+  type MailboxGroupRow = {
+    id: number;
+    name: string;
+    sort_order: number;
+    is_system_default: number;
+    created_at: string;
+    updated_at: string;
+  };
+
+  const groupDeleteLocks = new Set<number>();
+
+  function mailboxGroup(idValue: unknown) {
+    const id = typeof idValue === "number"
+      ? parse(z.number().int().positive().max(Number.MAX_SAFE_INTEGER), idValue)
+      : parse(routeId, idValue);
+    const row = db.db.prepare("SELECT * FROM mailbox_groups WHERE id=?").get(id) as MailboxGroupRow | undefined;
+    if (!row) throw Object.assign(new Error("邮箱分组不存在"), { status: 404 });
+    return row;
+  }
+
+  function resolveMailboxGroup(id?: number) {
+    const row = (id === undefined
+      ? db.db.prepare("SELECT * FROM mailbox_groups WHERE is_system_default=1").get()
+      : db.db.prepare("SELECT * FROM mailbox_groups WHERE id=?").get(id)) as MailboxGroupRow | undefined;
+    if (!row) throw Object.assign(new Error(id === undefined ? "系统默认分组不存在" : "邮箱分组不存在"), { status: 400 });
+    return row;
+  }
+
+  function groupMembers(groupId: number) {
+    return db.db.prepare(`SELECT id,address,stalwart_account_id,group_id,status
+      FROM mailboxes WHERE group_id=? ORDER BY id`).all(groupId) as Array<{
+        id: number;
+        address: string;
+        stalwart_account_id: string;
+        group_id: number;
+        status: string;
+      }>;
+  }
+
+  function groupMemberVersion(rows: Array<{ id: number; address: string; stalwart_account_id: string }>) {
+    return createHash("sha256")
+      .update(JSON.stringify(rows.map((row) => [row.id, row.address, row.stalwart_account_id])))
+      .digest("hex");
+  }
+
+  function compactMailboxGroupOrder() {
+    const rows = db.db.prepare(`SELECT id FROM mailbox_groups
+      WHERE is_system_default=0 ORDER BY sort_order,id`).all() as Array<{ id: number }>;
+    if (!rows.length) return;
+    const maximum = Number((db.db.prepare("SELECT COALESCE(MAX(sort_order),0) value FROM mailbox_groups").get() as { value: number }).value);
+    db.db.prepare("UPDATE mailbox_groups SET sort_order=sort_order+? WHERE is_system_default=0").run(maximum + rows.length + 1);
+    const update = db.db.prepare("UPDATE mailbox_groups SET sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=?");
+    rows.forEach((row, index) => update.run(index + 1, row.id));
+  }
+
+  app.get("/api/mailbox-groups", (_req, res) => {
+    const rows = db.db.prepare(`SELECT g.*,COUNT(m.id) mailbox_count
+      FROM mailbox_groups g LEFT JOIN mailboxes m ON m.group_id=g.id
+      GROUP BY g.id ORDER BY g.sort_order,g.id`).all();
+    res.json(rows);
+  });
+
+  app.post("/api/mailbox-groups", (req, res) => {
+    const { name } = parse(z.object({ name: mailboxGroupName }), req.body);
+    const nextOrder = Number((db.db.prepare("SELECT COALESCE(MAX(sort_order),0)+1 value FROM mailbox_groups").get() as { value: number }).value);
+    try {
+      const result = db.db.prepare("INSERT INTO mailbox_groups(name,sort_order) VALUES(?,?)").run(name, nextOrder);
+      const row = db.db.prepare("SELECT * FROM mailbox_groups WHERE id=?").get(Number(result.lastInsertRowid)) as MailboxGroupRow;
+      audit(db, req, "mailbox_group.create", "mailbox_group", String(row.id), { name: row.name });
+      res.status(201).json({ ...row, mailbox_count: 0 });
+    } catch (error: any) {
+      if (String(error?.message).includes("UNIQUE")) throw Object.assign(new Error("分组名称已存在"), { status: 409 });
+      throw error;
+    }
+  });
+
+  app.post("/api/mailbox-groups/reorder", (req, res) => {
+    const { groupIds } = parse(z.object({
+      groupIds: z.array(z.number().int().positive()).max(500),
+    }), req.body);
+    if (new Set(groupIds).size !== groupIds.length) throw Object.assign(new Error("分组排序中存在重复 ID"), { status: 400 });
+    const ordinary = db.db.prepare("SELECT id FROM mailbox_groups WHERE is_system_default=0 ORDER BY sort_order,id").all() as Array<{ id: number }>;
+    if (ordinary.length !== groupIds.length || ordinary.some((row) => !groupIds.includes(row.id))) {
+      throw Object.assign(new Error("分组排序必须包含全部普通分组且不能包含默认分组"), { status: 400 });
+    }
+    db.db.exec("BEGIN IMMEDIATE");
+    try {
+      const maximum = Number((db.db.prepare("SELECT COALESCE(MAX(sort_order),0) value FROM mailbox_groups").get() as { value: number }).value);
+      db.db.prepare("UPDATE mailbox_groups SET sort_order=sort_order+? WHERE is_system_default=0").run(maximum + groupIds.length + 1);
+      const update = db.db.prepare("UPDATE mailbox_groups SET sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_system_default=0");
+      groupIds.forEach((id, index) => update.run(index + 1, id));
+      db.db.exec("COMMIT");
+    } catch (error) {
+      db.db.exec("ROLLBACK");
+      throw error;
+    }
+    audit(db, req, "mailbox_group.reorder", "mailbox_group", undefined, { groupIds });
+    res.status(204).end();
+  });
+
+  app.patch("/api/mailbox-groups/:id", (req, res) => {
+    const row = mailboxGroup(req.params.id);
+    if (groupDeleteLocks.has(row.id)) throw Object.assign(new Error("分组正在删除，暂时不能修改"), { status: 409 });
+    const { name } = parse(z.object({ name: mailboxGroupName }), req.body);
+    try {
+      db.db.prepare("UPDATE mailbox_groups SET name=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(name, row.id);
+    } catch (error: any) {
+      if (String(error?.message).includes("UNIQUE")) throw Object.assign(new Error("分组名称已存在"), { status: 409 });
+      throw error;
+    }
+    audit(db, req, "mailbox_group.rename", "mailbox_group", String(row.id), { name });
+    res.json({ ...mailboxGroup(row.id) });
+  });
+
+  app.get("/api/mailbox-groups/:id/delete-preview", (req, res) => {
+    const group = mailboxGroup(req.params.id);
+    if (group.is_system_default) throw Object.assign(new Error("系统默认分组不能删除"), { status: 409 });
+    const members = groupMembers(group.id);
+    res.json({
+      group,
+      mailboxes: members.map(({ id, address, status }) => ({ id, address, status })),
+      memberVersion: groupMemberVersion(members),
+      confirmation: `DELETE ${members.length}`,
+    });
+  });
+
   app.get("/api/mailboxes", async (req, res) => {
     const search = String(req.query.search ?? "").slice(0, 128);
     const identity = res.locals.auth as AuthenticatedSession;
     const ownership = identity.role === "mailbox_user" ? "AND m.id=?" : "";
     const args = identity.role === "mailbox_user" ? [`%${search}%`, `%${search}%`, identity.mailboxId] : [`%${search}%`, `%${search}%`];
     const rows = db.db.prepare(`SELECT m.*,d.name domain FROM mailboxes m JOIN domains d ON d.id=m.domain_id
-      WHERE (m.address LIKE ? OR m.note LIKE ?) ${ownership} ORDER BY m.created_at DESC`).all(...args) as any[];
+      JOIN mailbox_groups g ON g.id=m.group_id
+      WHERE (m.address LIKE ? OR m.note LIKE ?) ${ownership}
+      ORDER BY g.sort_order,m.created_at DESC`).all(...args) as any[];
     const withStats = req.query.stats === "1";
     const result = await Promise.all(rows.map(async (row) => {
       if (!withStats) return row;
@@ -253,18 +382,23 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     });
   });
 
-  async function createMailboxRecord(input: { localPart: string; domain: any; note: string }, req: Request) {
+  async function createMailboxRecord(input: { localPart: string; domain: any; note: string; groupId?: number }, req: Request) {
     const normalizedLocalPart = input.localPart.toLowerCase();
     const address = `${normalizedLocalPart}@${input.domain.name}`;
+    const targetGroup = resolveMailboxGroup(input.groupId);
+    if (groupDeleteLocks.has(targetGroup.id)) throw Object.assign(new Error("目标分组正在删除"), { status: 409 });
     if (db.db.prepare("SELECT id FROM mailboxes WHERE address=?").get(address)) {
       throw Object.assign(new Error("邮箱地址已存在"), { status: 409 });
     }
     const accountId = await stalwart.createMailbox(normalizedLocalPart, input.domain.stalwart_domain_id, input.note || address);
     try {
-      const result = db.db.prepare(`INSERT INTO mailboxes(stalwart_account_id,address,local_part,domain_id,note) VALUES(?,?,?,?,?)`)
-        .run(accountId, address, normalizedLocalPart, input.domain.id, input.note);
+      if (groupDeleteLocks.has(targetGroup.id) || !db.db.prepare("SELECT id FROM mailbox_groups WHERE id=?").get(targetGroup.id)) {
+        throw Object.assign(new Error("目标分组已变化，请重新选择"), { status: 409 });
+      }
+      const result = db.db.prepare(`INSERT INTO mailboxes(stalwart_account_id,address,local_part,domain_id,note,group_id) VALUES(?,?,?,?,?,?)`)
+        .run(accountId, address, normalizedLocalPart, input.domain.id, input.note, targetGroup.id);
       audit(db, req, "mailbox.create", "mailbox", String(result.lastInsertRowid), { address });
-      return { id: Number(result.lastInsertRowid), address, external_login: 0 };
+      return { id: Number(result.lastInsertRowid), address, external_login: 0, group_id: targetGroup.id };
     } catch (error) {
       await stalwart.deleteMailbox(accountId).catch(() => undefined);
       throw error;
@@ -272,18 +406,25 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
   }
 
   app.post("/api/mailboxes", auth.requireAdmin, async (req, res) => {
-    const input = parse(z.object({ localPart, domainId: z.number().int().positive(), note: z.string().max(500).default("") }), req.body);
+    const input = parse(z.object({
+      localPart,
+      domainId: z.number().int().positive(),
+      note: z.string().max(500).default(""),
+      groupId: z.number().int().positive().optional(),
+    }), req.body);
     const domain = db.db.prepare("SELECT * FROM domains WHERE id=? AND enabled=1").get(input.domainId) as any;
     if (!domain) return res.status(400).json({ error: "域名未配置或未启用" });
-    res.status(201).json(await createMailboxRecord({ localPart: input.localPart, domain, note: input.note }, req));
+    res.status(201).json(await createMailboxRecord({ localPart: input.localPart, domain, note: input.note, groupId: input.groupId }, req));
   });
 
   app.post("/api/mailboxes/bulk", auth.requireAdmin, async (req, res) => {
     const input = parse(z.object({
       localParts: z.array(z.string().max(256)).min(1, "至少提供一个邮箱前缀").max(bulkMailboxLimit, `每次最多创建 ${bulkMailboxLimit} 个邮箱`),
+      groupId: z.number().int().positive().optional(),
     }), req.body);
     const domain = db.db.prepare("SELECT * FROM domains WHERE enabled=1 AND is_default=1 LIMIT 1").get() as any;
     if (!domain) return res.status(409).json({ error: "默认邮箱域名未配置或未启用" });
+    const targetGroup = resolveMailboxGroup(input.groupId);
 
     const results: Array<{ localPart: string; address: string; status: "created" | "skipped_existing" | "duplicate" | "failed"; reason?: string }> = [];
     const seen = new Set<string>();
@@ -305,7 +446,7 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
         continue;
       }
       try {
-        await createMailboxRecord({ localPart: normalizedLocalPart, domain, note: "" }, req);
+        await createMailboxRecord({ localPart: normalizedLocalPart, domain, note: "", groupId: targetGroup.id }, req);
         results.push({ localPart: normalizedLocalPart, address, status: "created" });
       } catch (error) {
         const reason = error instanceof StalwartError ? error.message : error instanceof Error && (error as any).status < 500 ? error.message : "创建失败";
@@ -339,6 +480,18 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     await stalwart.updateMailbox(row.stalwart_account_id, { description: note || row.address });
     db.db.prepare("UPDATE mailboxes SET note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(note, row.id);
     audit(db, req, "mailbox.note", "mailbox", String(row.id));
+    res.status(204).end();
+  });
+
+  app.patch("/api/mailboxes/:id/group", auth.requireAdmin, (req, res) => {
+    const row = mailbox(req.params.id, res);
+    const { groupId } = parse(z.object({ groupId: z.number().int().positive() }), req.body);
+    const target = resolveMailboxGroup(groupId);
+    if (groupDeleteLocks.has(row.group_id) || groupDeleteLocks.has(target.id)) {
+      throw Object.assign(new Error("相关分组正在删除，暂时不能移动邮箱"), { status: 409 });
+    }
+    db.db.prepare("UPDATE mailboxes SET group_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(target.id, row.id);
+    audit(db, req, "mailbox.group.move", "mailbox", String(row.id), { fromGroupId: row.group_id, toGroupId: target.id });
     res.status(204).end();
   });
 
@@ -386,7 +539,10 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
     res.status(204).end();
   });
 
-  async function deleteMailboxRecord(row: any, req: Request) {
+  async function deleteMailboxRecord(row: any, req: Request, allowGroupDelete = false) {
+    if (!allowGroupDelete && groupDeleteLocks.has(row.group_id)) {
+      throw Object.assign(new Error("邮箱所属分组正在删除"), { status: 409 });
+    }
     db.db.prepare("UPDATE mailboxes SET status='deleting',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(row.id);
     try {
       await stalwart.deleteMailbox(row.stalwart_account_id);
@@ -397,6 +553,103 @@ export function createApp(config: Config, deps?: { db?: AppDatabase; stalwart?: 
       throw error;
     }
   }
+
+  app.post("/api/mailbox-groups/:id/delete", async (req, res) => {
+    const input = parse(z.object({
+      mode: z.enum(["DELETE_WITH_MAILBOXES", "MOVE_TO_TARGET", "MOVE_TO_DEFAULT"]),
+      targetGroupId: z.number().int().positive().optional(),
+      memberVersion: z.string().regex(/^[a-f0-9]{64}$/),
+      confirmation: z.string().max(80).optional(),
+    }), req.body);
+    const group = mailboxGroup(req.params.id);
+    if (group.is_system_default) throw Object.assign(new Error("系统默认分组不能删除"), { status: 409 });
+    if (groupDeleteLocks.has(group.id)) throw Object.assign(new Error("分组删除操作正在进行"), { status: 409 });
+    groupDeleteLocks.add(group.id);
+    try {
+      const members = groupMembers(group.id);
+      if (groupMemberVersion(members) !== input.memberVersion) {
+        throw Object.assign(new Error("分组成员已发生变化，请重新确认"), { status: 409 });
+      }
+
+      if (input.mode === "DELETE_WITH_MAILBOXES") {
+        if (input.confirmation !== `DELETE ${members.length}`) {
+          throw Object.assign(new Error(`请输入 DELETE ${members.length} 以确认`), { status: 400 });
+        }
+        const deleted: Array<{ id: number; address: string }> = [];
+        for (const member of members) {
+          try {
+            await deleteMailboxRecord(member, req, true);
+            deleted.push({ id: member.id, address: member.address });
+          } catch (error) {
+            const remaining = groupMembers(group.id).map(({ id, address, status }) => ({ id, address, status }));
+            audit(db, req, "mailbox_group.delete.partial", "mailbox_group", String(group.id), {
+              deletedCount: deleted.length,
+              failedMailboxId: member.id,
+              remainingCount: remaining.length,
+            });
+            return res.status(207).json({
+              status: "partial_failure",
+              groupDeleted: false,
+              deleted,
+              failed: {
+                id: member.id,
+                address: member.address,
+                reason: error instanceof StalwartError ? error.message : "删除失败",
+              },
+              remaining,
+            });
+          }
+        }
+        db.db.exec("BEGIN IMMEDIATE");
+        try {
+          if (groupMembers(group.id).length) throw Object.assign(new Error("分组成员已发生变化，请重试"), { status: 409 });
+          db.db.prepare("DELETE FROM mailbox_groups WHERE id=? AND is_system_default=0").run(group.id);
+          compactMailboxGroupOrder();
+          db.db.exec("COMMIT");
+        } catch (error) {
+          db.db.exec("ROLLBACK");
+          throw error;
+        }
+        audit(db, req, "mailbox_group.delete.with_mailboxes", "mailbox_group", String(group.id), { deletedCount: deleted.length });
+        return res.json({ status: "deleted", groupDeleted: true, deleted });
+      }
+
+      if (input.mode === "MOVE_TO_TARGET" && input.targetGroupId === undefined) {
+        throw Object.assign(new Error("请选择目标分组"), { status: 400 });
+      }
+      const target = input.mode === "MOVE_TO_DEFAULT"
+        ? resolveMailboxGroup()
+        : resolveMailboxGroup(input.targetGroupId!);
+      if (target.id === group.id) throw Object.assign(new Error("目标分组不能是待删除分组"), { status: 400 });
+      if (groupDeleteLocks.has(target.id)) throw Object.assign(new Error("目标分组正在删除"), { status: 409 });
+
+      db.db.exec("BEGIN IMMEDIATE");
+      try {
+        const currentMembers = groupMembers(group.id);
+        if (groupMemberVersion(currentMembers) !== input.memberVersion) {
+          throw Object.assign(new Error("分组成员已发生变化，请重新确认"), { status: 409 });
+        }
+        if (!db.db.prepare("SELECT id FROM mailbox_groups WHERE id=?").get(target.id)) {
+          throw Object.assign(new Error("目标分组不存在"), { status: 400 });
+        }
+        db.db.prepare("UPDATE mailboxes SET group_id=?,updated_at=CURRENT_TIMESTAMP WHERE group_id=?").run(target.id, group.id);
+        db.db.prepare("DELETE FROM mailbox_groups WHERE id=? AND is_system_default=0").run(group.id);
+        compactMailboxGroupOrder();
+        db.db.exec("COMMIT");
+      } catch (error) {
+        db.db.exec("ROLLBACK");
+        throw error;
+      }
+      audit(db, req, "mailbox_group.delete.move", "mailbox_group", String(group.id), {
+        targetGroupId: target.id,
+        movedCount: members.length,
+        usedSystemDefault: input.mode === "MOVE_TO_DEFAULT",
+      });
+      return res.json({ status: "moved", groupDeleted: true, targetGroupId: target.id, moved: members.length });
+    } finally {
+      groupDeleteLocks.delete(group.id);
+    }
+  });
 
   app.delete("/api/mailboxes/:id", auth.requireAdmin, async (req, res) => {
     const row = mailbox(req.params.id, res);

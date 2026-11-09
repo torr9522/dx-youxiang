@@ -8,6 +8,7 @@ export type MailboxRow = {
   address: string;
   local_part: string;
   domain_id: number;
+  group_id: number;
   note: string;
   external_login: number;
   email_send: number;
@@ -120,6 +121,79 @@ export class AppDatabase {
     this.addColumn("sessions", "mailbox_id", "INTEGER REFERENCES mailboxes(id) ON DELETE CASCADE");
     this.addColumn("sessions", "stalwart_credential_ciphertext", "TEXT");
     this.db.exec("CREATE INDEX IF NOT EXISTS sessions_mailbox ON sessions(mailbox_id)");
+    this.migrateMailboxGroups();
+  }
+
+  private migrateMailboxGroups() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS mailbox_groups (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL COLLATE NOCASE UNIQUE
+            CHECK(name=trim(name) AND length(name) BETWEEN 1 AND 40),
+          sort_order INTEGER NOT NULL UNIQUE,
+          is_system_default INTEGER NOT NULL DEFAULT 0
+            CHECK(is_system_default IN (0,1)),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CHECK(
+            (is_system_default=1 AND sort_order=0) OR
+            (is_system_default=0 AND sort_order>0)
+          )
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS one_system_default_mailbox_group
+          ON mailbox_groups(is_system_default) WHERE is_system_default=1;
+        INSERT INTO mailbox_groups(name,sort_order,is_system_default)
+          SELECT 'dx',0,1
+          WHERE NOT EXISTS (
+            SELECT 1 FROM mailbox_groups WHERE is_system_default=1
+          );
+      `);
+      this.addColumn("mailboxes", "group_id", "INTEGER REFERENCES mailbox_groups(id) ON DELETE RESTRICT");
+      this.db.exec(`
+        UPDATE mailboxes
+          SET group_id=(SELECT id FROM mailbox_groups WHERE is_system_default=1)
+          WHERE group_id IS NULL;
+        CREATE INDEX IF NOT EXISTS mailboxes_group ON mailboxes(group_id);
+
+        CREATE TRIGGER IF NOT EXISTS mailbox_groups_protect_default_delete
+        BEFORE DELETE ON mailbox_groups
+        WHEN OLD.is_system_default=1
+        BEGIN
+          SELECT RAISE(ABORT, 'system default mailbox group cannot be deleted');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS mailbox_groups_protect_default_identity
+        BEFORE UPDATE OF is_system_default ON mailbox_groups
+        WHEN OLD.is_system_default<>NEW.is_system_default
+        BEGIN
+          SELECT RAISE(ABORT, 'system default mailbox group identity is immutable');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS mailboxes_assign_default_group_insert
+        AFTER INSERT ON mailboxes
+        WHEN NEW.group_id IS NULL
+        BEGIN
+          UPDATE mailboxes
+            SET group_id=(SELECT id FROM mailbox_groups WHERE is_system_default=1)
+            WHERE id=NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS mailboxes_assign_default_group_update
+        AFTER UPDATE OF group_id ON mailboxes
+        WHEN NEW.group_id IS NULL
+        BEGIN
+          UPDATE mailboxes
+            SET group_id=(SELECT id FROM mailbox_groups WHERE is_system_default=1)
+            WHERE id=NEW.id;
+        END;
+      `);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   private addColumn(table: string, column: string, definition: string) {
